@@ -38,11 +38,14 @@ typedef struct _CsiPlinkContext
     int useplink;
     int exitplink;
     CsiPictureBuffer sendbuffer[NUM_OF_BUFFERS];
+    csi_frame_s  frame_buf[NUM_OF_BUFFERS];
     int sendid;
     int available_bufs;
     void *vmem;
     PlinkHandle plink;
     PlinkChannelID chnid;
+    pthread_t  buf_release_thread;
+    pthread_mutex_t mutex;
 } CsiPlinkContext;
 static int get_buffer_count(PlinkPacket *pkt)
 {
@@ -65,7 +68,64 @@ static int get_buffer_count(PlinkPacket *pkt)
     return ret;
 }
 
-static void allocate_sendbuffers(CsiPictureBuffer picbuffers[NUM_OF_BUFFERS], unsigned int size, void *vmem)
+static void* camera_buf_release_process(CsiPlinkContext * plink_ctx)
+{
+	PlinkPacket pkt = {0};
+    if(plink_ctx == NULL)
+    {
+        return NULL;
+    }
+    LOG_O("Process is runing.....\n");
+     while(!plink_ctx->exitplink)
+     {
+        if (plink_ctx->plink != NULL) {
+			if (PLINK_wait(plink_ctx->plink, plink_ctx->chnid, 1000) == PLINK_STATUS_OK)
+			{
+				if (PLINK_recv(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK) {
+					plink_ctx->exitplink = 1;
+					break;
+				}
+				int count = get_buffer_count(&pkt);
+				if (count >= 0)
+                {
+                    PlinkMsg *hdr;
+	                int resp_id;
+                    for(int i=0;i<count;i++)
+                    {
+                        hdr = (PlinkMsg *)(pkt.list[i]);
+                        resp_id = hdr->msg;
+                        if((resp_id>=NUM_OF_BUFFERS)) 
+                        {
+                            LOG_W("invalid resp_id:%d\n",resp_id);
+                            continue;
+                        }
+                        if(plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds!= 0)
+                        {
+                            csi_camera_put_frame(&plink_ctx->frame_buf[resp_id]);
+                            LOG_D("release resp_id:%d, fd:%d\n",resp_id,plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds);
+                            plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds = 0;
+                        }
+
+                    }
+                    pthread_mutex_lock(&plink_ctx->mutex);
+					plink_ctx->available_bufs += count;
+                    pthread_mutex_unlock(&plink_ctx->mutex);
+                }
+				else {
+					fprintf(stderr, "[SERVER] Exit!\n");
+					plink_ctx->exitplink = 1;
+					break;
+				}
+			}else
+            {
+                LOG_W("Plink Resp timeout\n");
+            }
+		}
+     }
+     LOG_O("Process is exit .....\n");
+     return NULL;
+}
+static int allocate_sendbuffers(CsiPictureBuffer picbuffers[NUM_OF_BUFFERS], unsigned int size, void *vmem)
 {
     unsigned int buffer_size = (size + 0xFFF) & ~0xFFF;
     VmemParams params;
@@ -73,7 +133,9 @@ static void allocate_sendbuffers(CsiPictureBuffer picbuffers[NUM_OF_BUFFERS], un
     params.flags = VMEM_FLAG_CONTIGUOUS | VMEM_FLAG_4GB_ADDR;
     for (int i = 0; i < NUM_OF_BUFFERS; i++)
     {
-        VMEM_allocate(vmem, &params);
+        if (VMEM_allocate(vmem, &params) != 0) {
+			return -1;
+		}
         VMEM_mmap(vmem, &params);
         VMEM_export(vmem, &params);
         LOG_O("[SERVER] mmap %p from %x with size %d, dma-buf fd %d\n",
@@ -146,7 +208,9 @@ void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg)
             case CSI_PIX_FMT_BGR:
             {
                 framesize = stride * 304 * 3; //stride * chn_cfg->img_fmt.height * 3;
-                allocate_sendbuffers(plink_ctx->sendbuffer, framesize, plink_ctx->vmem);
+                if (allocate_sendbuffers(plink_ctx->sendbuffer, framesize, plink_ctx->vmem) != 0) {
+					return NULL;
+				}                
                 // reset to black picture
                 uint32_t lumasize = stride * chn_cfg->img_fmt.height;
                 for (int i = 0; i < NUM_OF_BUFFERS; i++)
@@ -158,7 +222,9 @@ void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg)
             default:
             {
                 framesize = stride * chn_cfg->img_fmt.height * 3 / 2;
-                allocate_sendbuffers(plink_ctx->sendbuffer, framesize, plink_ctx->vmem);
+                if (allocate_sendbuffers(plink_ctx->sendbuffer, framesize, plink_ctx->vmem) != 0) {
+					return NULL;
+				}
                 // reset to black picture
                 uint32_t lumasize = stride * chn_cfg->img_fmt.height;
                 for (int i = 0; i < NUM_OF_BUFFERS; i++) {
@@ -178,6 +244,10 @@ void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg)
 
     plink_ctx->sendid = 0;
     plink_ctx->available_bufs = NUM_OF_BUFFERS;
+    memset(plink_ctx->frame_buf,0x0,sizeof(plink_ctx->frame_buf));
+    pthread_mutex_init(&plink_ctx->mutex,NULL);
+    pthread_create(&plink_ctx->buf_release_thread,NULL,(void *)camera_buf_release_process,plink_ctx);
+
 
 	return plink_ctx;
 }
@@ -187,6 +257,9 @@ void vi_plink_release(void * plink)
     CsiPlinkContext * plink_ctx = (CsiPlinkContext *)plink;
     if(plink_ctx)
     {
+        plink_ctx->exitplink=1;
+        pthread_join(plink_ctx->buf_release_thread,NULL);
+        
         PLINK_close(plink_ctx->plink,plink_ctx->chnid);
         VMEM_destroy(plink_ctx->vmem);
     }
@@ -203,40 +276,12 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 	}
 
 
-	LOG_O("%sfmt=%d img.strides[0] = %d\n", __func__,frame->img.pix_format, frame->img.strides[0]);
+	LOG_O("fmt=%d img.strides[0] = %d\n",frame->img.pix_format, frame->img.strides[0]);
 
 	if (!plink_ctx->exitplink) {
 		struct timeval tv_start, tv_end, tv_duration;
 		gettimeofday(&tv_start, 0);
-		// retrieve buffers
 		PlinkPacket pkt = {0};
-		if (plink_ctx->plink != NULL) {
-			while (PLINK_wait(plink_ctx->plink, plink_ctx->chnid, 0) == PLINK_STATUS_OK)
-			{
-				if (PLINK_recv(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK) {
-					plink_ctx->exitplink = 1;
-					break;
-				}
-				int count = get_buffer_count(&pkt);
-				if (count >= 0)
-					plink_ctx->available_bufs += count;
-				else {
-					fprintf(stderr, "[SERVER] Exit!\n");
-					plink_ctx->exitplink = 1;
-					break;
-				}
-			}
-		}
-
-        /*
-        void *phy_address = NULL;
-        int dmabuf_fd = -1;
-        if (vi_mem_dmabuf_isenable()) {
-            phy_address = vi_mem_unmap(frame->img.usr_addr[0]);
-            dmabuf_fd = vi_mem_export(phy_address);
-        }
-        */
-
 		// send one buffer if there is available slot
         if (frame->img.type == CSI_IMG_TYPE_DMA_BUF && !plink_ctx->exitplink
             && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && ((frame->img.pix_format == CSI_PIX_FMT_RAW_8BIT)|| (frame->img.pix_format == CSI_PIX_FMT_RAW_12BIT))) {
@@ -245,15 +290,12 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			uint32_t dstw = frame->img.width;//800;
 			uint32_t dsth = frame->img.height;//1280;
 			uint32_t dsts = frame->img.strides[0];//896;
-            i++;
-            sprintf(str, "echo frame is %d > ~/frame", i);
-            system(str);
 
 			PlinkRawInfo info = {0};
 
 			info.header.type = PLINK_TYPE_2D_RAW;
 			info.header.size = DATA_SIZE(info);
-			info.header.id = plink_ctx->sendid + 1;
+			info.header.id = plink_ctx->sendid;
 
 			info.format = PLINK_COLOR_FormatRawBayer10bit;
 			// info.bus_address = vi_mem_import(frame->img.dmabuf[0].fds) + frame->img.dmabuf[0].offset;
@@ -266,12 +308,20 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			pkt.list[0] = &info;
 			pkt.num = 1;
 			pkt.fd = frame->img.dmabuf[0].fds;
+            if(plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds!=0)
+            {
+                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds);
+                csi_camera_put_frame(&plink_ctx->frame_buf[plink_ctx->sendid]);
+            }
+            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_s));
+            plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
 			if (PLINK_send(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK)
 				plink_ctx->exitplink = 1;
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
-			plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
+            pthread_mutex_lock(&plink_ctx->mutex);
 			plink_ctx->available_bufs -= 1;
+            pthread_mutex_unlock(&plink_ctx->mutex);
 		}
         else if (frame->img.type == CSI_IMG_TYPE_DMA_BUF && !plink_ctx->exitplink
             && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && ((frame->img.pix_format == CSI_PIX_FMT_YUV_SEMIPLANAR_420)|| (frame->img.pix_format == CSI_PIX_FMT_NV12))) {
@@ -280,15 +330,13 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			uint32_t dstw = frame->img.width;//800;
 			uint32_t dsth = frame->img.height;//1280;
 			uint32_t dsts = frame->img.strides[0];//896;
-            i++;
-            sprintf(str, "echo frame is %d > ~/frame", i);
-            system(str);
+
 
 			PlinkYuvInfo info = {0};
 
 			info.header.type = PLINK_TYPE_2D_YUV;
 			info.header.size = DATA_SIZE(info);
-			info.header.id = plink_ctx->sendid + 1;
+			info.header.id = plink_ctx->sendid;
 
 			info.format = PLINK_COLOR_FormatYUV420SemiPlanar;
 			// info.bus_address_y = vi_mem_import(frame->img.dmabuf[0].fds) + frame->img.dmabuf[0].offset;
@@ -306,16 +354,32 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			pkt.list[0] = &info;
 			pkt.num = 1;
 			pkt.fd = frame->img.dmabuf[0].fds;
+            
+            if(plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds!=0)
+            {
+                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds);
+                csi_camera_put_frame(&plink_ctx->frame_buf[plink_ctx->sendid]);
+            }
+            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_s));          
+			plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
 			if (PLINK_send(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK)
 				plink_ctx->exitplink = 1;
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
-			plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
+            pthread_mutex_lock(&plink_ctx->mutex);
 			plink_ctx->available_bufs -= 1;
+            pthread_mutex_unlock(&plink_ctx->mutex);
 		} else if (!plink_ctx->exitplink && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && (frame->img.pix_format == CSI_PIX_FMT_BGR)) {
 			CsiPictureBuffer *buf = &plink_ctx->sendbuffer[plink_ctx->sendid];
 			int y = 0;
-
+			// if (1) {
+    		// 	void *pbuf[3];
+			// 	void *phyaddr = vi_mem_import(frame->img.dmabuf[0].fds);
+			// 	pbuf[0] = vi_mem_map(phyaddr) + frame->img.dmabuf[0].offset;
+			// 	pbuf[1] = pbuf[0] + frame->img.dmabuf[1].offset;
+			// 	vi_mem_release(phyaddr);
+			// 	frame->img.usr_addr[0] = pbuf[0];
+			// }
 			uint8_t *src = frame->img.usr_addr[0];
 			uint8_t *dst = buf->virtual_address;
 			uint32_t srcw = frame->img.width;
@@ -429,9 +493,10 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
-
+            pthread_mutex_lock(&plink_ctx->mutex);
 			plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
 			plink_ctx->available_bufs -= 1;
+            pthread_mutex_unlock(&plink_ctx->mutex);
 		}
 	}
 	LOG_O("%s exit \n", __func__);

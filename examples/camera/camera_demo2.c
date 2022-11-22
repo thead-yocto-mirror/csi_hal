@@ -265,11 +265,6 @@ int main(int argc, char *argv[])
 						       CSI_CAMERA_CHANNEL_0);
 				csi_camera_get_frame(cam_handle,CSI_CAMERA_CHANNEL_0, &frame, timeout);
 
-				// frame.image: {.width, .height, .pix_fmt, .dma-buf}
-				//show_frame_image(frame.image); // 伪代码
-				// frame.meta: {.count,
-				//              .meta_data[]={meta_id, type,
-				//                            union{int_value, str_value, ...}}}
 
 #ifdef PLATFORM_SIMULATOR
 				camera_action_image_display(&frame);

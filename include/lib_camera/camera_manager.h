@@ -102,7 +102,7 @@ int camera_destory_session(cams_t **session);
 
 int camera_query_list(cams_t *session);
 int camera_get_caps(cams_t *session);
-int camera_open(cams_t *session, int cam_id);
+int camera_open(cams_t *session, const char *dev_name);
 int camera_close(cams_t *session);
 
 int camera_get_modes(cams_t *session);

@@ -58,6 +58,7 @@ static  event_queue_item_t *dequeue_event(channel_handle_ctx_t *ctx)
 	if(!ev)
     {
         pthread_mutex_unlock(&ctx->event_queue.mutex);
+        usleep(1000);
         return NULL;
     }
 
@@ -223,7 +224,8 @@ int main(int argc, char *argv[])
     int frame_num = 0;
     algo_2 = "dsp1_dummy_algo_flo";
     algo_1 = "dsp1_dummy_algo_flo_1";
-	switch(argc)
+	int ret = 0;
+    switch(argc)
     {
         case 0:
         case 1:
@@ -303,8 +305,12 @@ int main(int argc, char *argv[])
 	/*  The caps are: Video capture, metadata capture */
 	// 打开Camera设备获取句柄，作为后续操对象
 	csi_cam_handle_t cam_handle;
-	csi_camera_open(&cam_handle, camera_info.device_name);
-	LOG_O("csi_camera_open() OK\n");
+    ret = csi_camera_open(&cam_handle, camera_info.device_name);
+	if (ret) {
+		LOG_E("Failed to csi_camera_open %s\n", camera_info.device_name);
+		exit(-1);
+	}	
+    LOG_O("csi_camera_open() OK\n");
 
 	// 获取Camera支持的工作模式
 	struct csi_camera_modes camera_modes;
@@ -332,7 +338,10 @@ int main(int argc, char *argv[])
 	chn_cfg.meta_fields = CSI_CAMERA_META_DEFAULT_FIELDS;
 	chn_cfg.capture_type = CSI_CAMERA_CHANNEL_CAPTURE_VIDEO |
 			       CSI_CAMERA_CHANNEL_CAPTURE_META;
-	csi_camera_channel_open(cam_handle, &chn_cfg);
+	ret = csi_camera_channel_open(cam_handle, &chn_cfg);
+    if (ret) {
+		exit(-1);
+	}
 	LOG_O("CSI_CAMERA_CHANNEL_0: csi_camera_channel_open() OK\n");
 
 
@@ -346,7 +355,10 @@ int main(int argc, char *argv[])
 	chn_cfg.meta_fields = CSI_CAMERA_META_DEFAULT_FIELDS;
 	chn_cfg.capture_type = CSI_CAMERA_CHANNEL_CAPTURE_VIDEO |
 			       CSI_CAMERA_CHANNEL_CAPTURE_META;
-	csi_camera_channel_open(cam_handle, &chn_cfg);
+    ret = csi_camera_channel_open(cam_handle, &chn_cfg);
+	if (ret) {
+		exit(-1);
+	}
 	LOG_O("CSI_CAMERA_CHANNEL_1: csi_camera_channel_open() OK\n");
 
 	// 订阅Event
@@ -402,8 +414,7 @@ int main(int argc, char *argv[])
     
     if(csi_camera_set_dsp_algo_param(cam_handle, cb_context[0].dsp_id,cb_context[0].dsp_path, &algo_param_1))
     {
-        LOG_E("set DSP algo fail\n");
-        
+        LOG_E("set DSP algo fail\n");       
     }
 
 
@@ -436,11 +447,18 @@ int main(int argc, char *argv[])
     csi_camera_projection_led_set_mode(cam_handle, LED_IR_ENABLE);
     csi_camera_floodlight_led_set_mode(cam_handle, LED_IR_ENABLE);
     csi_camera_led_enable(cam_handle, LED_FLOODLIGHT_PROJECTION);
-
+    csi_camera_led_set_switch_mode(cam_handle, SWITCH_MODE_PROJECTION_EVEN_FLOODLIGHT_ODD);
+ 
     // 开始从channel中取出准备好的frame
-	csi_camera_channel_start(cam_handle, CSI_CAMERA_CHANNEL_0);
-	csi_camera_channel_start(cam_handle, CSI_CAMERA_CHANNEL_1);
-	LOG_O("Channel start OK\n");
+    ret = csi_camera_channel_start(cam_handle, CSI_CAMERA_CHANNEL_0);
+	if (ret) {
+		exit(-1);
+	}
+	ret = csi_camera_channel_start(cam_handle, CSI_CAMERA_CHANNEL_1);
+	if (ret) {
+		exit(-1);
+	}	
+    LOG_O("Channel start OK\n");
 
 	// 处理订阅的Event
 	csi_frame_s frame;
@@ -450,14 +468,21 @@ int main(int argc, char *argv[])
 	while (running) {
 		int timeout = -1; // unit: ms, -1 means wait forever, or until error occurs
         event_item = malloc(sizeof( event_queue_item_t));   
-		csi_camera_get_event(event_handle, &event_item->evet, timeout);
-       LOG_O("event.type = %d, event.id = %d\n",event_item->evet.type, event_item->evet.id);
-
+		if(csi_camera_get_event(event_handle, &event_item->evet, timeout))
+        {
+            LOG_E("get event timeout\n");
+            free(event_item);
+            continue;
+        }       
+        LOG_O("event.type = %d, event.id = %d\n",event_item->evet.type, event_item->evet.id);
 		switch (event_item->evet.type) {
 		case CSI_CAMERA_EVENT_TYPE_CAMERA:
 			switch (event_item->evet.id) {
 			case CSI_CAMERA_EVENT_ERROR:
-				// do sth.
+                LOG_E("CSI_CAMERA_EVENT_ERROR reprot\n");
+				break;
+            case CSI_CAMERA_EVENT_WARNING:
+                LOG_W("CSI_CAMERA_EVENT_ERROR reprot\n");
 				break;
 			default:
 				break;
@@ -521,6 +546,7 @@ int main(int argc, char *argv[])
 	csi_camera_destory_event(event_handle);
 
 	csi_camera_channel_close(cam_handle, CSI_CAMERA_CHANNEL_0);
+    csi_camera_channel_close(cam_handle, CSI_CAMERA_CHANNEL_1);
 	csi_camera_close(cam_handle);
 }
 

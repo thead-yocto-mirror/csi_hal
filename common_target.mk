@@ -105,3 +105,14 @@ $(OBJS_8): %.o:%.c
 	@echo ">>> Compiling" $< "..."
 	$(CC) $(CFLAGS) $(INCLUDE) -c -o .obj/$(notdir $@) $<
 
+OBJS_9 = $(SRCS_9:.c=.o)
+$(TARGET_9): $(OBJS_9) $(PREPARE)
+	@mkdir -p $(OUTPUT_DIR)
+	@echo ">>> Linking" $@ "..."
+	$(CC) $(LFLAGS) -o $@ $(addprefix .obj/,$(notdir $(OBJS_9))) -Wl,--start-group $(LIBS) $(LIBS_8) -Wl,--end-group
+	cp $@ $(OUTPUT_DIR)
+
+$(OBJS_9): %.o:%.c
+	@mkdir -p .obj
+	@echo ">>> Compiling" $< "..."
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o .obj/$(notdir $@) $<

@@ -229,7 +229,11 @@ int main(int argc, char *argv[])
 	get_system_time(__func__, __LINE__);
 	// 打开Camera设备获取句柄，作为后续操对象
 	csi_cam_handle_t cam_handle;
-	csi_camera_open(&cam_handle, camera_info.device_name);
+	ret = csi_camera_open(&cam_handle, camera_info.device_name);
+	if (ret) {
+		LOG_E("Failed to csi_camera_open %s\n", camera_info.device_name);
+		exit(-1);
+	}
 	get_system_time(__func__, __LINE__);
 	// 获取Camera支持的工作模式
 	struct csi_camera_modes camera_modes;
@@ -317,9 +321,10 @@ int main(int argc, char *argv[])
 	if (csi_camera_set_property(cam_handle, &properties) < 0) {
 		LOG_O("set_property fail!\n");
 	}
-	LOG_O("set_property ok!\n");
-
-
+    else
+    {
+	    LOG_O("set_property ok!\n");
+    }
 
     // extern int csi_camera_set_pp_path_param(csi_cam_handle_t cam_handle, uint16_t line_num,uint16_t buf_mode);
     // csi_camera_set_pp_path_param(cam_handle,80,0);
@@ -440,8 +445,12 @@ int main(int argc, char *argv[])
     }
 */
 	// 开始从channel中取出准备好的frame
-	csi_camera_channel_start(cam_handle, chn_id);
-	get_system_time(__func__, __LINE__);
+	ret = csi_camera_channel_start(cam_handle, chn_id);
+	if (ret) {
+		LOG_E("Failed to csi_camera_channel_start ch%d\n", chn_id);
+		exit(-1);
+	}
+    get_system_time(__func__, __LINE__);
 	// 处理订阅的Event
 	csi_frame_s frame;
 	struct csi_camera_event event;
@@ -453,7 +462,11 @@ int main(int argc, char *argv[])
 			}
 		}
 		int timeout = -1; // unit: ms, -1 means wait forever, or until error occurs
-		csi_camera_get_event(event_handle, &event, timeout);
+        if(csi_camera_get_event(event_handle, &event, timeout))
+        {
+            LOG_E("Failed to get event \n");
+		    continue;
+        }
 		// printf("%s event.type = %d, event.id = %d\n", __func__, event.type, event.id);
 		switch (event.type) {
 		case CSI_CAMERA_EVENT_TYPE_CAMERA:
@@ -493,7 +506,11 @@ int main(int argc, char *argv[])
 				LOG_O("%s %d read_frame_count = %d, frame_count = %ld, fps = %.2f diff = %ld\n", __func__, __LINE__, read_frame_count, demo_fps.frameNumber, demo_fps.fps, diff);
 
 				for (int i = 0; i < read_frame_count; i++) {
-					csi_camera_get_frame(cam_handle, chn_id, &frame, timeout);
+                    if(csi_camera_get_frame(cam_handle, chn_id, &frame, timeout))
+                    {
+                        LOG_W("get frame fail\n");
+                        continue;
+                    }
 #ifdef PLATFORM_SIMULATOR
                     if (frame.img.type == CSI_IMG_TYPE_DMA_BUF) {
                         void *phyaddr = vi_mem_import(frame.img.dmabuf[0].fds);
@@ -504,7 +521,6 @@ int main(int argc, char *argv[])
 					    show_frame_image(frame.img.usr_addr[0], frame.img.height, frame.img.width);
                     }
 #endif
-					// printf("main 443 phyaddr=%p\n", vi_mem_import(frame.img.dmabuf[0].fds));
 					dump_camera_meta(&frame);
 					chn_cfg.chn_id = chn_id;
 					csi_camera_channel_query(cam_handle, &chn_cfg);
@@ -515,10 +531,9 @@ int main(int argc, char *argv[])
 					}
 					if (display_enable == 1) {
                         display_camera_frame(display_plink, &frame);
+                        continue;
                     }
-                    // csi_camera_frame_unlock(cam_handle, &frame);
                     csi_camera_put_frame(&frame);
-
 					csi_frame_release(&frame);
 				}
 				break;

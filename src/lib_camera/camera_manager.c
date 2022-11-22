@@ -48,7 +48,6 @@ static int _camera_session_reset(cams_t *session)
 
 	memset(session, 0, sizeof(*session));
 	session->state = CAMERA_STATE_CLOSED;
-	session->camera_id = -1;
 	session->camera_handle = NULL;
 
 	session->event_handle = NULL;
@@ -133,26 +132,24 @@ int camera_get_caps(cams_t *session)
 	return 0;
 }
 
-int camera_open(cams_t *session, int cam_id)
+int camera_open(cams_t *session, const char *dev_name)
 {
 	_CHECK_SESSION_RETURN();
 	int ret;
+	csi_camera_info_s camera_info;
+	csi_cam_handle_t handle;
 
-	if (!_get_info_status(session, CAMERA_INFOS_READY) ||
-	    session->camera_infos.count <= cam_id) {
-		LOG_E("Can't open cam_id=%d\n", cam_id);
+	if (!_get_info_status(session, CAMERA_INFOS_READY)) {
+		LOG_E("Can't open %s\n", dev_name);
 		return -1;
 	}
 
-	char *dev_name = session->camera_infos.info[cam_id].device_name;
-	csi_cam_handle_t handle;
 	ret = csi_camera_open(&handle, dev_name);
 	if (ret != 0) {
 		LOG_E("Open camera(%s) failed\n", dev_name);
 		return -1;
 	}
 
-	session->camera_id = cam_id;
 	session->camera_handle = handle;
 	session->state = CAMERA_STATE_OPENED;
 
@@ -170,8 +167,6 @@ int camera_open(cams_t *session, int cam_id)
 		event_action = &(session->camera_event_action[i]);
 
 		event_action->target = MANAGE_TARGET_CAMERA;
-		event_action->camera_id = cam_id;
-		event_action->channel_id = -1;
 		event_action->camera.event = 1 << i;
 		//LOG_W("i=%d, event_action->camera.event=0x%08x\n", i, event_action->camera.event);
 		event_action->camera.supported = false;
@@ -196,8 +191,6 @@ int camera_open(cams_t *session, int cam_id)
 			event_action = &(session->channel_event_action[chn][i]);
 
 			event_action->target = MANAGE_TARGET_CHANNEL;
-			event_action->camera_id = cam_id;
-			event_action->channel_id = chn;
 			event_action->channel.event = 1 << i;
 			event_action->channel.supported = false;
 			event_action->channel.subscribed = false;
@@ -323,8 +316,8 @@ int camera_channel_query_list(cams_t *session)
 		}
 		ret = csi_camera_channel_query(session->camera_handle, &session->chn_cfg[i]);
 		if (ret != 0) {
-			LOG_E("Get %d channel configuration from camera[%d] failed\n",
-			      i, session->camera_id);
+			LOG_E("Get %d channel configuration from camera[%s] failed\n",
+			      i, session->camera_infos.info->device_name);
 			continue;
 		} else {
 			//LOG_D("channel[%d] status=%s\n", session->chn_cfg[i].chn_id,
@@ -436,7 +429,7 @@ int camera_subscribe_event(cams_t *session)
 
 	for (int chn = 0; chn < CSI_CAMERA_CHANNEL_MAX_COUNT; chn++) {
 		if (session->chn_cfg[chn].status != CSI_CAMERA_CHANNEL_OPENED) {
-			LOG_D("Camera[%d]:Channel[%d] is not OPENED\n", session->camera_id, chn);
+			LOG_D("Camera[%s]:Channel[%d] is not OPENED\n", session->camera_infos.info->device_name, chn);
 			continue;
 		}
 		for (int i = 0; i < CSI_CAMERA_CHANNEL_EVENT_MAX_COUNT; i++) {

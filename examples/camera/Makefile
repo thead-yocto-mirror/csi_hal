@@ -17,8 +17,9 @@ PREPARE := lib_camera
 ifeq ($(PLATFORM),light)
   CFLAGS +=  -I$(VISYS_SYM_PATH)/usr/include/plink/
   CFLAGS +=  -I$(VISYS_SYM_PATH)/usr/include/vidmem/
+  CFLAGS +=  -I$(VISYS_SYM_PATH)/usr/include/dsp/lib/inc/
   LIBS += -lstdc++ -lpthread 
-  LIBS += -lvmem -lplink
+  LIBS += -lvmem -lplink -ldsp
  
 endif
 
@@ -53,10 +54,13 @@ SRCS_7 = cam_demo_ir.c camera_frame_display.c
 TARGET_8 := cam_demo_multi
 SRCS_8 = cam_demo_multi.c camera_frame_display.c
 
+TARGET_9 := cam_demo_dual_ir
+SRCS_9 = cam_demo_dual_ir.c
+
 ifeq ($(PLATFORM),simulator)
 TARGET_ALL := $(TARGET_1) $(TARGET_2) $(TARGET_3) $(TARGET_4)
 else
-TARGET_ALL := $(TARGET_1) $(TARGET_2) $(TARGET_3) $(TARGET_5)  $(TARGET_6) $(TARGET_7) $(TARGET_8) 
+TARGET_ALL := $(TARGET_1) $(TARGET_2) $(TARGET_3) $(TARGET_5)  $(TARGET_6) $(TARGET_7) $(TARGET_8) $(TARGET_9) 
 endif
 
 all: $(TARGET_ALL)
@@ -78,6 +82,10 @@ clean:
 	rm -f $(TARGET_3) $(OUTPUT_DIR)/camera_demo3.conf
 	rm -f $(TARGET_4) $(OUTPUT_DIR)/$(TARGET_4)
 	rm -f $(TARGET_5) $(OUTPUT_DIR)/$(TARGET_5)
+	rm -f $(TARGET_6) $(OUTPUT_DIR)/$(TARGET_6)
+	rm -f $(TARGET_7) $(OUTPUT_DIR)/$(TARGET_7)
+	rm -f $(TARGET_8) $(OUTPUT_DIR)/$(TARGET_8)
+	rm -f $(TARGET_9) $(OUTPUT_DIR)/$(TARGET_9)
 	make -C ./opencv clean
 
 include $(DIR_TO_ROOT)/common_target.mk

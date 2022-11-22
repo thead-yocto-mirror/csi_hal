@@ -103,7 +103,7 @@ again:
 		/* Show operation result */
 		cam_id = item_activate_selected_pos();
 		//char str_buf[256];
-		bool opened = (camera_open(cam_session, cam_id) == 0);
+		bool opened = (camera_open(cam_session, "/dev/video0") == 0);
 		snprintf(str_buf, sizeof(str_buf),
 			"Open the below camera %s:\n"
 			"\t id=%d \n\t name='%s' \n\t device='%s' \n\t bus='%s'\n",
