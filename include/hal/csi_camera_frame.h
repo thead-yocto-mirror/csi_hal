@@ -14,7 +14,11 @@
 #include <stdbool.h>
 #include <sys/time.h>
 
-#include <csi_frame.h>
+#include "csi_frame.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define CSI_CAMERA_META_MAX_LEN 1024
 
@@ -57,6 +61,9 @@ int csi_camera_frame_get_meta_unit(csi_camrea_meta_unit_s *meta_unit,
 				   csi_camera_meta_s      *meta_data,
 				   csi_camera_meta_id_e    meta_field);
 
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* __CSI_CAMERA_FRAME_H__ */
 

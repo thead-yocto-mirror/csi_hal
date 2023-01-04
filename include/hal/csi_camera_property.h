@@ -10,6 +10,9 @@
 #ifndef __CSI_CAMERA_PROPERTY_H__
 #define __CSI_CAMERA_PROPERTY_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* Camera Property ID */
 #define CSI_CAMERA_PID_BASE		(0x009a0000 | 0x900)
 
@@ -89,5 +92,8 @@ enum CSI_CAMERA_AUTO_PRESET_WHITE_BALANCE_MODE {
 #define CSI_CAMERA_PID_BAND_STOP_FILTER    (CSI_CAMERA_PID_BASE + 0x62)
 #define CSI_CAMERA_PID_IMAGE_STABILIZATION (CSI_CAMERA_PID_BASE + 0x63)
 
+#ifdef  __cplusplus
+}
+#endif
 #endif /* __CSI_CAMERA_PROPERTY_H__ */
 

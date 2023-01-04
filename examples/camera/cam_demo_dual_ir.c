@@ -173,6 +173,12 @@ typedef struct dsp_ctx{
     char*  algo_name;
 }dsp_ctx_t;
 
+typedef enum {
+    DUAL_DSP_ALGO_TYPE_DSP0_COPY =0,
+    DUAL_DSP_ALGO_TYPE_DSP1_COPY,
+    DUAL_DSP_ALGO_TYPE_DSP01_COPY,
+
+}dual_dsp_algo_type_e;
 typedef struct dual_dsp_handle{
     dsp_ctx_t dsp_ctx[MAX_DSP_DEVICE];
     msg_queue_ctx_t dsp_prcoess_queue;
@@ -180,6 +186,7 @@ typedef struct dual_dsp_handle{
     void *mem_allocor;
     pthread_t thread_dsp_process; 
     frame_mode_t  frame_mode;
+    dual_dsp_algo_type_e dsp_run_type;
 }dual_dsp_handle_t;
 
 
@@ -211,11 +218,11 @@ void printUsage(char *name)
            "    -h      height (default: 1280))\n"
            "    -n      runing Camera frame num :0 not stop ,else frame num to stop )\n"
            "    -M      DSP frame mode :0 none ,1 dump enable,2 display)\n"
-
+           "    -a      DSP algo mode :0 catch master frame ,1 catch slave frame, 2 catch each half frame)\n"
            "\n", name);
 }
 
-static int  parseParams(int argc, char **argv, camera_param_t *params,frame_mode_t *mode)
+static int  parseParams(int argc, char **argv, camera_param_t *params,frame_mode_t *mode,dual_dsp_algo_type_e *dsp_type)
 {
         int index =0;
         int i = 1;
@@ -241,6 +248,7 @@ static int  parseParams(int argc, char **argv, camera_param_t *params,frame_mode
         params[index].frames_to_stop = 30;
         index++;
         *mode = FRAME_NONE;
+        *dsp_type = DUAL_DSP_ALGO_TYPE_DSP01_COPY;
         while (i < argc)
         {
             if (argv[i][0] != '-' || strlen(argv[i]) < 2)
@@ -282,6 +290,11 @@ static int  parseParams(int argc, char **argv, camera_param_t *params,frame_mode
                 if (++i < argc)
                     *mode = atoi(argv[i++]);
             }
+            else if (argv[i][1] == 'a')
+            {
+                if (++i < argc)
+                     *dsp_type = atoi(argv[i++]);
+            }
             else if (strcmp(argv[i], "--help") == 0)
             {
                  printUsage(argv[0]);
@@ -293,7 +306,7 @@ static int  parseParams(int argc, char **argv, camera_param_t *params,frame_mode
         printf("[DUAL IR] Resolution            : %dx%d\n", params[0].out_pic[0].width,params[0].out_pic[0].height);
         printf("[DUAL IR] run frame             : %d\n", params[0].frames_to_stop);
         printf("[DUAL IR] frame mode            : %d\n", *mode);
-
+        printf("[DUAL IR] dsp run type          : %d\n", *dsp_type);
 
         return index;   
 }
@@ -490,7 +503,7 @@ static int dsp_send_info_to_cam(msg_queue_ctx_t* cam_msg_queue,int master_fd,int
     return 0;    
 }
 
-static dual_dsp_handle_t* dsp_process_create(frame_mode_t mode)
+static dual_dsp_handle_t* dsp_process_create(frame_mode_t mode,dual_dsp_algo_type_e type)
 {
     dual_dsp_handle_t *dsp_hdl=NULL;
     dsp_hdl = malloc(sizeof(dual_dsp_handle_t));
@@ -506,6 +519,7 @@ static dual_dsp_handle_t* dsp_process_create(frame_mode_t mode)
     dsp_hdl->dsp_prcoess_queue.tail=NULL;
     dsp_hdl->dsp_prcoess_queue.exit = 0;
     dsp_hdl->frame_mode = mode;
+    dsp_hdl->dsp_run_type = type;
     pthread_mutex_init(&dsp_hdl->dsp_prcoess_queue.mutex,NULL);
     
     if(dsp_construct_task(&dsp_hdl->dsp_ctx[0]))
@@ -739,10 +753,21 @@ static void* dsp_dual_ir_porcess(void *arg)
             continue;
         }
         dsp1_result = (algo_result_t *)buf4.planes[0].buf_vir;
-        setting.mode =   ALGO_PIC_MODE_FULL_COPY_WITH_PARAM;
-        setting.buf_id=0;
-        setting.h_offset = dual_ir_frame->height/2;
-        setting.height =dual_ir_frame->height/2;
+        if(dsp_hdl->dsp_run_type == DUAL_DSP_ALGO_TYPE_DSP01_COPY )
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY_WITH_PARAM;
+            setting.buf_id=0;
+            setting.h_offset = dual_ir_frame->height/2;
+            setting.height =dual_ir_frame->height/2;
+        }else if(dsp_hdl->dsp_run_type == DUAL_DSP_ALGO_TYPE_DSP0_COPY)
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY;
+        }
+        else
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY_NONE;
+        }
+
         setting.timestap = dual_ir_frame->timestap;
         if(csi_dsp_request_set_property(req1,&setting,sizeof(setting)))
         {
@@ -753,10 +778,21 @@ static void* dsp_dual_ir_porcess(void *arg)
             continue;
         }
 
-        setting.mode =   ALGO_PIC_MODE_FULL_COPY_WITH_PARAM;
-        setting.buf_id=0;
-        setting.h_offset = 0;
-        setting.height =dual_ir_frame->height/2;
+        if(dsp_hdl->dsp_run_type == DUAL_DSP_ALGO_TYPE_DSP01_COPY )
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY_WITH_PARAM;
+            setting.buf_id=0;
+            setting.h_offset = 0;
+            setting.height =dual_ir_frame->height/2;
+        }else if(dsp_hdl->dsp_run_type == DUAL_DSP_ALGO_TYPE_DSP1_COPY)
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY;
+        }
+        else
+        {
+            setting.mode =   ALGO_PIC_MODE_FULL_COPY_NONE;
+        }        
+        
         setting.timestap = dual_ir_frame->timestap;
         if(csi_dsp_request_set_property(req2,&setting,sizeof(setting)))
         {
@@ -1023,7 +1059,7 @@ static int send_paired_frame_to_dsp(msg_queue_ctx_t *queue,csi_frame_s *master_f
     dsp_msg_payload->master_stride = master_frame->img.strides[0];
     dsp_msg_payload->master_fd =  master_frame->img.fds[0];
     dsp_msg_payload->slave_fd =  slave_frame->img.fds[0];
-        dsp_msg_payload->slave_stride = slave_frame->img.strides[0];
+    dsp_msg_payload->slave_stride = slave_frame->img.strides[0];
     dsp_msg_payload->timestap = timestap.time_value.tv_sec*1000000+timestap.time_value.tv_usec;
     enqueue_msg(queue,dsp_msg);
     main_item = malloc(sizeof(frame_item_t));
@@ -1393,14 +1429,15 @@ static camera_ctx_t * camera_open(camera_param_t *params)
 
 	LOG_O("%s open successfully\n",dev_name);
 
-    // if(params->type == CAM_TYEP_MASTER)
-    // {
+    if(params->type == CAM_TYEP_SLAVE)
+    {
     //         csi_camera_floodlight_led_set_flash_bright(cam_ctx->cam_handle, 500); //500ma
-    //         csi_camera_projection_led_set_flash_bright(cam_ctx->cam_handle, 500); //500ma
-    //         csi_camera_projection_led_set_mode(cam_ctx->cam_handle, LED_IR_ENABLE);
+            csi_camera_projection_led_set_flash_bright(cam_ctx->cam_handle, 500); //500ma
+            csi_camera_projection_led_set_mode(cam_ctx->cam_handle, LED_IR_ENABLE);
     //         csi_camera_floodlight_led_set_mode(cam_ctx->cam_handle, LED_IR_ENABLE);
-    //         csi_camera_led_enable(cam_ctx->cam_handle, LED_FLOODLIGHT_PROJECTION);
-    // }
+            csi_camera_led_enable(cam_ctx->cam_handle, LED_PROJECTION);
+            // csi_camera_led_set_switch_mode(cam_ctx->cam_handle, SWITCH_MODE_PROJECTION_ALWAYS_ON);
+    }
 
 	get_system_time(__func__, __LINE__);
 
@@ -1453,16 +1490,18 @@ int main(int argc, char *argv[])
     camera_param_t params[MAX_CAM_NUM];
     camera_ctx_t * ctx[MAX_CAM_NUM]={NULL};
     frame_mode_t frame_mode ;
+        dual_dsp_algo_type_e dsp_type;
     int cam_num=0;
     bool running = false;
-    cam_num =parseParams(argc,argv,params,&frame_mode);
+ cam_num =parseParams(argc,argv,params,&frame_mode,&dsp_type);
     if(cam_num <=0 || cam_num>MAX_CAM_NUM)
     {
         LOG_E("not camera is active\n");
         exit(0);
     }
 
-    dsp_hdl =dsp_process_create(frame_mode);
+ 
+    dsp_hdl =dsp_process_create(frame_mode,dsp_type);
     if(dsp_hdl==NULL)
     {
         LOG_E("dsp create faile\n");

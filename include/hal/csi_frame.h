@@ -15,6 +15,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * CSI frame defination is below, including
  *
@@ -152,5 +155,9 @@ int   csi_frame_reference(csi_frame_s *frame_dest, csi_frame_s *frame_src);
 int   csi_frame_release(csi_frame_s *frame);
 void *csi_frame_mmap(csi_frame_s *frame);
 int   csi_frame_munmap(csi_frame_s *frame);
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* __CSI_FRAME_H__ */

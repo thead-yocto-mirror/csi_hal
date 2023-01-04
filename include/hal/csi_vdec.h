@@ -14,11 +14,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <csi_common.h>
-#include <csi_vcodec_common.h>
-#include <csi_allocator.h>
-#include <csi_frame.h>
-#include <csi_frame_ex.h>
+#include "csi_common.h"
+#include "csi_vcodec_common.h"
+#include "csi_allocator.h"
+#include "csi_frame.h"
+#include "csi_frame_ex.h"
 
 #ifdef  __cplusplus
 extern "C" {

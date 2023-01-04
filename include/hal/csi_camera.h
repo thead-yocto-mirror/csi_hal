@@ -12,10 +12,10 @@
 
 #include <time.h>
 
-#include <csi_common.h>
-#include <csi_camera_property.h>
-#include <csi_camera_frame.h>
-#include <csi_frame_ex.h>
+#include "csi_common.h"
+#include "csi_camera_property.h"
+#include "csi_camera_frame.h"
+#include "csi_frame_ex.h"
 
 #ifdef  __cplusplus
 extern "C" {
@@ -222,6 +222,22 @@ typedef struct csi_camera_event {
 		char bin[128];
 	};
 } csi_camera_event_s;
+
+
+typedef enum csi_camera_error{
+    CSI_CAMERA_RET_ERR_INVALID_DEV = -1001,/* device is not valid */
+    CSI_CAMERA_RET_ERR_INVALID_PARA, /* input params is not valid */
+    CSI_CAMERA_RET_ERR_NULL_PTR, 
+    CSI_CAMERA_RET_ERR_DEV_BUSY,  /* device is budy */
+    CSI_CAMERA_RET_ERR_NOMEM,   /* malloc fail */
+    CSI_CAMERA_RET_ERR_TIMEOUT, /* evet or frame wait timeout */
+    CSI_CAMERA_RET_ERR_NOT_SUPPORT, /* setting or config is not supported */
+    CSI_CAMERA_CHANNEL_RET_ERR_INVALID_CHN = -501,/*channel is not valid */
+    CSI_CAMERA_CHANNEL_RET_ERR_NOTOPEN,
+    CSI_CAMERA_RET_ERR = -1, /*common sw error */
+    CSI_CAMERA_RET_OK =0,
+
+}csi_camera_erro_e;
 
 int csi_camera_get_version(csi_api_version_u *version);
 

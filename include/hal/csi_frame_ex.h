@@ -4,8 +4,10 @@
 #ifndef _CSI_FRAME_EX_H
 #define _CSI_FRAME_EX_H
 
-#include <csi_common.h>
-
+#include "csi_common.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 #define MAX_PLANE_COUNT  3
 
 typedef enum {
@@ -171,6 +173,10 @@ typedef struct csi_bitstream {
 	uint8_t is_eos;   //is the end of stream
 	uint8_t is_frame; //is whole compress frame data
 } csi_bitstream_s;
+#endif
+
+#ifdef  __cplusplus
+}
 #endif
 
 #endif
