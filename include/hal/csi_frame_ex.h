@@ -5,66 +5,11 @@
 #define _CSI_FRAME_EX_H
 
 #include "csi_common.h"
+#include "csi_meta.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 #define MAX_PLANE_COUNT  3
-
-typedef enum {
-	CSI_PIXEL_FORMAT_RGB_444 = 0,
-	CSI_PIXEL_FORMAT_RGB_555,
-	CSI_PIXEL_FORMAT_RGB_565,
-	CSI_PIXEL_FORMAT_RGB_888,
-
-	CSI_PIXEL_FORMAT_BGR_444,
-	CSI_PIXEL_FORMAT_BGR_555,
-	CSI_PIXEL_FORMAT_BGR_565,
-	CSI_PIXEL_FORMAT_BGR_888,
-
-	CSI_PIXEL_FORMAT_ARGB_1555,
-	CSI_PIXEL_FORMAT_ARGB_4444,
-	CSI_PIXEL_FORMAT_ARGB_8565,
-	CSI_PIXEL_FORMAT_ARGB_8888,
-	CSI_PIXEL_FORMAT_ARGB_2BPP,
-
-	CSI_PIXEL_FORMAT_ABGR_1555,
-	CSI_PIXEL_FORMAT_ABGR_4444,
-	CSI_PIXEL_FORMAT_ABGR_8565,
-	CSI_PIXEL_FORMAT_ABGR_8888,
-
-	CSI_PIXEL_FORMAT_RGB_BAYER_8BPP,
-	CSI_PIXEL_FORMAT_RGB_BAYER_10BPP,
-	CSI_PIXEL_FORMAT_RGB_BAYER_12BPP,
-	CSI_PIXEL_FORMAT_RGB_BAYER_14BPP,
-	CSI_PIXEL_FORMAT_RGB_BAYER_16BPP,
-
-	CSI_PIXEL_FORMAT_YVU_PLANAR_422,
-	CSI_PIXEL_FORMAT_YVU_PLANAR_420,
-	CSI_PIXEL_FORMAT_YVU_PLANAR_444,
-
-	CSI_PIXEL_FORMAT_YVU_SEMIPLANAR_422,
-	CSI_PIXEL_FORMAT_YVU_SEMIPLANAR_420,
-	CSI_PIXEL_FORMAT_YVU_SEMIPLANAR_444,
-
-	CSI_PIXEL_FORMAT_YUV_SEMIPLANAR_422,
-	CSI_PIXEL_FORMAT_YUV_SEMIPLANAR_420,
-	CSI_PIXEL_FORMAT_YUV_SEMIPLANAR_444,
-
-	CSI_PIXEL_FORMAT_YUYV_PACKAGE_422,
-	CSI_PIXEL_FORMAT_YVYU_PACKAGE_422,
-	CSI_PIXEL_FORMAT_UYVY_PACKAGE_422,
-	CSI_PIXEL_FORMAT_VYUY_PACKAGE_422,
-	CSI_PIXEL_FORMAT_YYUV_PACKAGE_422,
-	CSI_PIXEL_FORMAT_YYVU_PACKAGE_422,
-	CSI_PIXEL_FORMAT_UVYY_PACKAGE_422,
-	CSI_PIXEL_FORMAT_VUYY_PACKAGE_422,
-	CSI_PIXEL_FORMAT_VY1UY0_PACKAGE_422,
-
-	CSI_PIXEL_FORMAT_YUV_400,
-	CSI_PIXEL_FORMAT_UV_420,
-
-	CSI_PIXEL_FORMAT_MAX
-} csi_pixel_format_e;
 
 #if 0
 typedef enum {
@@ -129,13 +74,12 @@ typedef enum {
 	CSI_VIDEO_FORMAT_MAC
 } csi_video_format_e;
 
-
 typedef struct csi_frame_info {
 	int32_t width;
 	int32_t height;
 	/* the region of interest of the frame */
 	//csi_rect_s roi;
-	csi_pixel_format_e pixel_format;
+	int32_t pixel_format;   //define in csi_pixel_fmt_e
 	//csi_frame_compress_mode compress_mode;
 	csi_color_space_e  color_space;
 	csi_chroma_location_e chroma_location;
@@ -159,13 +103,18 @@ typedef struct csi_frame_data {
 	};
 } csi_frame_data_s;
 
-
 typedef struct csi_frame_ex {
 	csi_frame_info_s frame_info;
 	csi_frame_data_s frame_data;
-	void *opaque; /* not for user, DO NOT use or modify it */
+    csi_meta_s frame_meta;
+	void *opaque; /* for user private data, csi NOT use or modify it */
+    void *csi_priv;/**for csi private data,user NOT use or modify it***************/
 } csi_frame_ex_s;
 
+typedef struct csi_frame_alloctor{
+    int (*alloc)(csi_frame_ex_s * frame); /* base on the frame info,alloc fill the fd */
+    int (*free)(csi_frame_ex_s * frame);
+}csi_frame_alloctor_s;
 #if 0
 typedef struct csi_bitstream {
 	void *buf;

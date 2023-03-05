@@ -14,13 +14,13 @@
 
 #include <stdio.h>
 
-int camera_action_image_save(csi_frame_s *frame)
+int camera_action_image_save(csi_frame_ex_s *frame)
 {
 	//wait to complete
 	return 0;
 }
 
-int camera_action_image_display(csi_frame_s *frame)
+int camera_action_image_display(csi_frame_ex_s *frame)
 {
 	//wait to complete
 	return 0;

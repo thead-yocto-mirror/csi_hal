@@ -23,7 +23,7 @@
 #include "platform_action.h"
 #endif
 
-static void dump_camera_meta(csi_frame_s *frame);
+static void dump_camera_meta(csi_frame_ex_s *frame);
 
 //#define TEST_DEVICE_NAME "/dev/fake"
 #define TEST_DEVICE_NAME "/dev/video0"
@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
 	csi_camera_channel_start(cam_handle, CSI_CAMERA_CHANNEL_0);
 
 	// 处理订阅的Event
-	csi_frame_s frame;
+	csi_frame_ex_s frame;
 	struct csi_camera_event event;
 
 	while (running) {
@@ -283,15 +283,15 @@ int main(int argc, char *argv[])
 	csi_camera_close(cam_handle);
 }
 
-static void dump_camera_meta(csi_frame_s *frame)
+static void dump_camera_meta(csi_frame_ex_s *frame)
 {
 	int i;
-	if (frame->meta.type != CSI_META_TYPE_CAMERA)
+	if (frame->frame_meta.type != CSI_META_TYPE_CAMERA)
 		return;
 
-	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->meta.data;
+	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->frame_meta.data;
 	int meta_count = meta_data->count;
-	csi_camrea_meta_unit_s meta_unit;
+	csi_camera_meta_unit_s meta_unit;
 
 	for (i = 0; i < meta_count; i++) {
 		csi_camera_frame_get_meta_unit(

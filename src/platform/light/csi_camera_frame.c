@@ -24,7 +24,7 @@ int csi_camera_frame_free_meta(csi_camera_meta_s *meta)
 	return 0;
 }
 
-int csi_camera_frame_get_meta_unit(csi_camrea_meta_unit_s *meta_unit,
+int csi_camera_frame_get_meta_unit(csi_camera_meta_unit_s *meta_unit,
 				   csi_camera_meta_s      *meta_data,
 				   csi_camera_meta_id_e    meta_field)
 {

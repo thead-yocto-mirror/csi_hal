@@ -38,7 +38,7 @@ typedef struct _CsiPlinkContext
     int useplink;
     int exitplink;
     CsiPictureBuffer sendbuffer[NUM_OF_BUFFERS];
-    csi_frame_s  frame_buf[NUM_OF_BUFFERS];
+    csi_frame_ex_s  frame_buf[NUM_OF_BUFFERS];
     int sendid;
     int available_bufs;
     void *vmem;
@@ -99,11 +99,11 @@ static void* camera_buf_release_process(CsiPlinkContext * plink_ctx)
                             LOG_W("invalid resp_id:%d\n",resp_id);
                             continue;
                         }
-                        if(plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds!= 0)
+                        if(plink_ctx->frame_buf[resp_id].frame_data.fd[0]!= 0)
                         {
                             csi_camera_put_frame(&plink_ctx->frame_buf[resp_id]);
-                            LOG_D("release resp_id:%d, fd:%d\n",resp_id,plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds);
-                            plink_ctx->frame_buf[resp_id].img.dmabuf[0].fds = 0;
+                            LOG_D("release resp_id:%d, fd:%d\n",resp_id,plink_ctx->frame_buf[resp_id].frame_data.fd[0]);
+                            plink_ctx->frame_buf[resp_id].frame_data.fd[0] = 0;
                         }
 
                     }
@@ -125,6 +125,7 @@ static void* camera_buf_release_process(CsiPlinkContext * plink_ctx)
      LOG_O("Process is exit .....\n");
      return NULL;
 }
+
 static int allocate_sendbuffers(CsiPictureBuffer picbuffers[NUM_OF_BUFFERS], unsigned int size, void *vmem)
 {
     unsigned int buffer_size = (size + 0xFFF) & ~0xFFF;
@@ -145,13 +146,15 @@ static int allocate_sendbuffers(CsiPictureBuffer picbuffers[NUM_OF_BUFFERS], uns
         picbuffers[i].size = buffer_size;
         picbuffers[i].fd = params.fd;
     }
+    return 0;
 }
 
 void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg)
 {
 	int ret = 0;
     CsiPlinkContext *plink_ctx = NULL;
-    char *env=NULL;
+    char *env = NULL;
+
 	if (chn_cfg == NULL) {
 		LOG_E("%s failt to  get chn_cfg\n", __func__);
 		return NULL;
@@ -264,32 +267,33 @@ void vi_plink_release(void * plink)
         VMEM_destroy(plink_ctx->vmem);
     }
 }
-
-
-void display_camera_frame(void *plink, csi_frame_s *frame)
+void display_camera_frame(void *plink, csi_frame_ex_s *frame)
 {
 	
     CsiPlinkContext * plink_ctx = (CsiPlinkContext *)plink;
+
 	if ((plink_ctx == NULL) ||  (frame == NULL)) {
 		LOG_E("%s  check param fail\n", __func__);
         return;
 	}
 
-
-	LOG_O("fmt=%d img.strides[0] = %d\n",frame->img.pix_format, frame->img.strides[0]);
+	LOG_I("fmt=%d,fd=%d,stride:%d\n",frame->frame_info.pixel_format,frame->frame_data.fd[0],frame->frame_data.stride[0]);
 
 	if (!plink_ctx->exitplink) {
 		struct timeval tv_start, tv_end, tv_duration;
 		gettimeofday(&tv_start, 0);
 		PlinkPacket pkt = {0};
 		// send one buffer if there is available slot
-        if (frame->img.type == CSI_IMG_TYPE_DMA_BUF && !plink_ctx->exitplink
-            && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && ((frame->img.pix_format == CSI_PIX_FMT_RAW_8BIT)|| (frame->img.pix_format == CSI_PIX_FMT_RAW_12BIT))) {
+        if (!plink_ctx->exitplink&& plink_ctx->available_bufs > 0 &&
+            plink_ctx->plink != NULL && ((frame->frame_info.pixel_format == CSI_PIX_FMT_RAW_8BIT)|| 
+                                            (frame->frame_info.pixel_format == CSI_PIX_FMT_RAW_10BIT)||
+                                            (frame->frame_info.pixel_format== CSI_PIX_FMT_RAW_12BIT))) 
+        {   
             char str[200];
             static int i = 0;
-			uint32_t dstw = frame->img.width;//800;
-			uint32_t dsth = frame->img.height;//1280;
-			uint32_t dsts = frame->img.strides[0];//896;
+			uint32_t dstw = frame->frame_info.width;//800;
+			uint32_t dsth = frame->frame_info.height;//1280;
+			uint32_t dsts = frame->frame_data.stride[0];//896;
 
 			PlinkRawInfo info = {0};
 
@@ -303,33 +307,35 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 
 			info.img_width = dstw;
 			info.img_height = dsth;
-			info.stride = frame->img.strides[0];
+			info.stride = frame->frame_data.stride[0];
 			info.offset = 0;
 			pkt.list[0] = &info;
 			pkt.num = 1;
-			pkt.fd = frame->img.dmabuf[0].fds;
-            if(plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds!=0)
+			pkt.fd = frame->frame_data.fd[0];
+            if(plink_ctx->frame_buf[plink_ctx->sendid].frame_data.fd[0]!=0)
             {
-                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds);
+                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].frame_data.fd[0]);
                 csi_camera_put_frame(&plink_ctx->frame_buf[plink_ctx->sendid]);
             }
-            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_s));
+            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_ex_s));
             plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
 			if (PLINK_send(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK)
 				plink_ctx->exitplink = 1;
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
+
+
             pthread_mutex_lock(&plink_ctx->mutex);
 			plink_ctx->available_bufs -= 1;
             pthread_mutex_unlock(&plink_ctx->mutex);
 		}
-        else if (frame->img.type == CSI_IMG_TYPE_DMA_BUF && !plink_ctx->exitplink
-            && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && ((frame->img.pix_format == CSI_PIX_FMT_YUV_SEMIPLANAR_420)|| (frame->img.pix_format == CSI_PIX_FMT_NV12))) {
+         else if (!plink_ctx->exitplink && plink_ctx->available_bufs > 0 && 
+                plink_ctx->plink != NULL && ((frame->frame_info.pixel_format == CSI_PIX_FMT_YUV_SEMIPLANAR_420)|| (frame->frame_info.pixel_format == CSI_PIX_FMT_NV12))) {            
             char str[200];
             static int i = 0;
-			uint32_t dstw = frame->img.width;//800;
-			uint32_t dsth = frame->img.height;//1280;
-			uint32_t dsts = frame->img.strides[0];//896;
+			uint32_t dstw = frame->frame_info.width;//800;
+			uint32_t dsth = frame->frame_info.height;//1280;
+			uint32_t dsts = frame->frame_data.stride[0];//896;
 
 
 			PlinkYuvInfo info = {0};
@@ -349,46 +355,42 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			info.stride_u = dsts;
 			info.stride_v = dsts;
 			info.offset_y = 0;
-			info.offset_u = frame->img.dmabuf[1].offset;
-			info.offset_v = frame->img.dmabuf[2].offset;
+			info.offset_u = frame->frame_data.offset[1];
+			info.offset_v = frame->frame_data.offset[2];
 			pkt.list[0] = &info;
 			pkt.num = 1;
-			pkt.fd = frame->img.dmabuf[0].fds;
+			pkt.fd = frame->frame_data.fd[0];
             
-            if(plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds!=0)
+            if(plink_ctx->frame_buf[plink_ctx->sendid].frame_data.fd[0]!=0)
             {
-                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].img.dmabuf[0].fds);
+                LOG_W("previous sendid :%d,fd %d not release,release it now\n",plink_ctx->sendid,plink_ctx->frame_buf[plink_ctx->sendid].frame_data.fd[0]);
                 csi_camera_put_frame(&plink_ctx->frame_buf[plink_ctx->sendid]);
             }
-            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_s));          
+            memcpy(&plink_ctx->frame_buf[plink_ctx->sendid],frame,sizeof(csi_frame_ex_s));          
 			plink_ctx->sendid = (plink_ctx->sendid + 1) % NUM_OF_BUFFERS;
 			if (PLINK_send(plink_ctx->plink, plink_ctx->chnid, &pkt) != PLINK_STATUS_OK)
 				plink_ctx->exitplink = 1;
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
+            
             pthread_mutex_lock(&plink_ctx->mutex);
 			plink_ctx->available_bufs -= 1;
             pthread_mutex_unlock(&plink_ctx->mutex);
-		} else if (!plink_ctx->exitplink && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && (frame->img.pix_format == CSI_PIX_FMT_BGR)) {
+		
+ 		} else if (!plink_ctx->exitplink && plink_ctx->available_bufs > 0 && plink_ctx->plink != NULL && (frame->frame_info.pixel_format == CSI_PIX_FMT_BGR)) {
 			CsiPictureBuffer *buf = &plink_ctx->sendbuffer[plink_ctx->sendid];
 			int y = 0;
-			// if (1) {
-    		// 	void *pbuf[3];
-			// 	void *phyaddr = vi_mem_import(frame->img.dmabuf[0].fds);
-			// 	pbuf[0] = vi_mem_map(phyaddr) + frame->img.dmabuf[0].offset;
-			// 	pbuf[1] = pbuf[0] + frame->img.dmabuf[1].offset;
-			// 	vi_mem_release(phyaddr);
-			// 	frame->img.usr_addr[0] = pbuf[0];
-			// }
-			uint8_t *src = frame->img.usr_addr[0];
+            int buf_size =  frame->frame_info.width*frame->frame_info.height*3;
+
+			uint8_t *src = frame->frame_data.vir_addr[0] ;
 			uint8_t *dst = buf->virtual_address;
-			uint32_t srcw = frame->img.width;
-			uint32_t srch = frame->img.height;
-			uint32_t dstw = frame->img.width;
-			uint32_t dsth = frame->img.height;
-			uint32_t dsts = frame->img.width;
-			switch (frame->img.pix_format ) {
-				case CSI_PIX_FMT_BGR:
+			uint32_t srcw = frame->frame_info.width;
+			uint32_t srch = frame->frame_info.height;
+			uint32_t dstw = frame->frame_info.width;
+			uint32_t dsth = frame->frame_info.height;
+			uint32_t dsts = frame->frame_info.width;
+			switch (frame->frame_info.pixel_format) {				
+                case CSI_PIX_FMT_BGR:
 				{
 					dstw = 300;
 					dsth = 304;
@@ -404,7 +406,7 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 						src += srcw;
 						dst += dsts;
 					}
-					src = frame->img.usr_addr[0] + srcw*srch;
+					src = frame->frame_data.vir_addr[0] + srcw*srch;
 					dst = buf->virtual_address + dsts*dsth;
 					for (y = 0; y < h; y++)
 					{
@@ -412,7 +414,7 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 						src += srcw;
 						dst += dsts;
 					}
-					src = frame->img.usr_addr[0] + srcw*srch*2;
+					src = frame->frame_data.vir_addr[0]  + srcw*srch*2;
 					dst = buf->virtual_address + dsts*dsth*2;
 					for (y = 0; y < h; y++)
 					{
@@ -457,7 +459,7 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 						src += srcw;
 						dst += dsts;
 					}
-					src = frame->img.usr_addr[0] + frame->img.strides[0] * frame->img.height;
+					src = frame->frame_data.vir_addr[0]  +  frame->frame_data.stride[0] * frame->frame_info.height;
 					dst = buf->virtual_address + (dsts * dsth);
 					for (y = 0; y < h/2; y++)
 					{
@@ -490,7 +492,7 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 					break;
 				}
 			}
-
+            csi_camera_put_frame(frame);
 			gettimeofday(&tv_end, 0);
 			timersub(&tv_end, &tv_start, &tv_duration);
             pthread_mutex_lock(&plink_ctx->mutex);
@@ -498,6 +500,17 @@ void display_camera_frame(void *plink, csi_frame_s *frame)
 			plink_ctx->available_bufs -= 1;
             pthread_mutex_unlock(&plink_ctx->mutex);
 		}
+        else
+        {
+            LOG_W("frame not send by plink,available_bufs:%d,fmt:%d\n",plink_ctx->available_bufs,
+                                                                frame->frame_info.pixel_format);
+            csi_camera_put_frame(frame);
+        }
 	}
-	LOG_O("%s exit \n", __func__);
+    else
+    {
+        LOG_E("plink is exit\n");
+        csi_camera_put_frame(frame);
+    }
+	LOG_I("%s exit \n");
 }

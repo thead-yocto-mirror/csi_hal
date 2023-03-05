@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
-
+#include "csi_meta.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,14 +62,6 @@ typedef enum csi_color_gamut {
 	CSI_COLOR_GAMUT_BT2020,
 } csi_color_gamut_e;
 
-typedef enum csi_meta_type {
-	CSI_META_TYPE_SYSTEM,
-	CSI_META_TYPE_CAMERA,
-	CSI_META_TYPE_VDEC,
-	CSI_META_TYPE_GPU,
-	CSI_META_TYPE_G2D,
-} csi_meta_type_e;
-
 typedef enum csi_img_type {
 	CSI_IMG_TYPE_DMA_BUF,		// memory allocated via dma-buf
 	CSI_IMG_TYPE_SYSTEM_CONTIG,	// memory allocated via kmalloc
@@ -77,15 +69,6 @@ typedef enum csi_img_type {
 	CSI_IMG_TYPE_UMALLOC,		// memory allocated from user mode malloc
 	CSI_IMG_TYPE_SHM,		// memory allocated from share memory(<sys/shm.h>)
 } csi_img_type_e;
-
-typedef enum csi_meta_value_type {
-	CSI_META_VALUE_TYPE_BOOL,
-	CSI_META_VALUE_TYPE_INT,
-	CSI_META_VALUE_TYPE_UINT,
-	CSI_META_VALUE_TYPE_STR,
-	CSI_META_VALUE_TYPE_TIMEVAL,
-} csi_meta_value_type_e;
-
 
 /*
  * CSI frame config design
@@ -138,13 +121,6 @@ typedef struct csi_img {
 	uint64_t modifier;
     void *priv;
 } csi_img_s;
-
-typedef struct csi_meta {
-	csi_meta_type_e  type;
-	size_t           size;
-	void            *data;
-} csi_meta_s;
-
 typedef struct csi_frame {
 	csi_img_s  img;
 	csi_meta_s meta;

@@ -11,8 +11,8 @@
 #define __PLATFORM_ACTION_H__
 
 #include <csi_camera.h>
-int camera_action_image_save(csi_frame_s *frame);
-int camera_action_image_display(csi_frame_s *frame);
+int camera_action_image_save(csi_frame_ex_s *frame);
+int camera_action_image_display(csi_frame_ex_s *frame);
 
 #endif
 

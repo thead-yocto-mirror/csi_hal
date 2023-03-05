@@ -46,18 +46,18 @@ typedef struct csi_camrea_meta_unit {
 		char		str_value[32];
 		struct timeval  time_value;
 	};
-} csi_camrea_meta_unit_s;
+} csi_camera_meta_unit_s;
 
 typedef struct csi_camera_meta {
 	unsigned int            count;
 	size_t                  size;
-	csi_camrea_meta_unit_s *units;	// Is meta_unit array head
+	csi_camera_meta_unit_s *units;	// Is meta_unit array head
 } csi_camera_meta_s;
 
 int csi_camera_frame_alloc_meta(csi_camera_meta_s **meta, int meta_count, size_t *meta_data_size);
 int csi_camera_frame_free_meta(csi_camera_meta_s *meta);
 
-int csi_camera_frame_get_meta_unit(csi_camrea_meta_unit_s *meta_unit,
+int csi_camera_frame_get_meta_unit(csi_camera_meta_unit_s *meta_unit,
 				   csi_camera_meta_s      *meta_data,
 				   csi_camera_meta_id_e    meta_field);
 

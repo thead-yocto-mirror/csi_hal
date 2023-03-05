@@ -26,8 +26,8 @@
 #endif
 #define  MAX_CAM_NUM    3
 #define  MAX_CHANNEL_NUM 3 
-static void dump_camera_meta(csi_frame_s *frame);
-static void dump_camera_frame(csi_frame_s *frame, csi_pixel_fmt_e fmt, int camera_id);
+static void dump_camera_meta(csi_frame_ex_s *frame);
+static void dump_camera_frame(csi_frame_ex_s *frame, int ch_id);
 
 // extern int csi_camera_frame_unlock(csi_cam_handle_t cam_handle, csi_frame_s *frame);
 
@@ -94,7 +94,7 @@ typedef struct _camera_ctx{
 int file_id = 0;
 extern void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg);
 extern void vi_plink_release(void * plink);
-extern void display_camera_frame(void * plink, csi_frame_s *frame);
+extern void display_camera_frame(void * plink, csi_frame_ex_s *frame);
 
 static void usage(void)
 {
@@ -255,7 +255,7 @@ static void *camera_event_thread(void *arg)
 
 	frame_fps_t demo_fps;
 	memset(&demo_fps, 0, sizeof(demo_fps));
-	csi_frame_s frame;
+	csi_frame_ex_s frame;
 
 	if (ev_handle == NULL) {
 		LOG_E("fail to get ev_handle ev_handle\n");
@@ -314,10 +314,10 @@ static void *camera_event_thread(void *arg)
 					csi_camera_get_frame(ctx->cam_handle, chn_id, &frame, timeout);
 					dump_camera_meta(&frame);
 					if (ctx->frame_mode[chn_id] == FRAME_SAVE_IMG) {
-						dump_camera_frame(&frame, ch_cfg->img_fmt.pix_fmt, chn_id);
+						dump_camera_frame(&frame, chn_id);
 					}
 					if (ctx->disaply_plink && ctx->frame_mode[chn_id]==FRAME_SAVE_DISPLAY) {
-						frame.img.pix_format = ch_cfg->img_fmt.pix_fmt;
+						
 						display_camera_frame(ctx->disaply_plink, &frame);
                     }
                     csi_camera_put_frame(&frame);
@@ -645,16 +645,16 @@ ONR_ERR:
     exit(0);
 }
 
-static void dump_camera_meta(csi_frame_s *frame)
+static void dump_camera_meta(csi_frame_ex_s *frame)
 {
 	int i;
 	//printf("%s\n", __func__);
-	if (frame->meta.type != CSI_META_TYPE_CAMERA)
+	if (frame->frame_meta.type != CSI_META_TYPE_CAMERA)
 		return;
 
-	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->meta.data;
+	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->frame_meta.data;
 	int meta_count = meta_data->count;
-	csi_camrea_meta_unit_s meta_unit;
+	csi_camera_meta_unit_s meta_unit;
 
 
 	csi_camera_frame_get_meta_unit(
@@ -663,145 +663,95 @@ static void dump_camera_meta(csi_frame_s *frame)
 			meta_unit.id, meta_unit.type, meta_unit.int_value);
 }
 
-static void dump_camera_frame(csi_frame_s *frame, csi_pixel_fmt_e fmt, int chan_id)
+static void dump_camera_frame(csi_frame_ex_s *frame, int ch_id)
 {
 	char file[128];
 	static int file_indx=0;
 	int size;
 	uint32_t indexd, j;
-    void *buf[3];
+	void *buf[3]={NULL,NULL,NULL};
     int buf_size;
-    csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->meta.data;
-	csi_camrea_meta_unit_s meta_unit;
+	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->frame_meta.data;
+	csi_camera_meta_unit_s meta_unit;
 
+	csi_camera_frame_get_meta_unit(&meta_unit, meta_data, CSI_CAMERA_META_ID_CAMERA_NAME);
 
-	csi_camera_frame_get_meta_unit(
-		&meta_unit, meta_data, CSI_CAMERA_META_ID_CAMERA_NAME);
-
-              
-	sprintf(file,"demo_save_img%s_%d_%d",meta_unit.str_value,chan_id, file_indx++%10);
+	sprintf(file, "demo_save_img_%s_ch%d_%d_%d", meta_unit.str_value, ch_id,file_id, file_indx++%10);
 	int fd = open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IROTH);
 	if(fd == -1) {
 		LOG_E("%s, %d, open file error!!!!!!!!!!!!!!!\n", __func__, __LINE__);
-		return ;
+		return;
 	}
-    if (frame->img.type == CSI_IMG_TYPE_DMA_BUF) {
 
-        buf_size = frame->img.strides[0]*frame->img.height;
-         switch(fmt) {
-                case CSI_PIX_FMT_NV12:
-		        case CSI_PIX_FMT_YUV_SEMIPLANAR_420:
-                        if(frame->img.num_planes ==2)
-                        { 
-                            buf_size+=frame->img.strides[1]*frame->img.height/2;
-                        }
-                        else{
-                            LOG_O("img fomrat is not match with frame planes:%d\n",frame->img.num_planes);
-                            return;
-                        }
-                        break;
-                case CSI_PIX_FMT_YUV_SEMIPLANAR_422:
-                        if(frame->img.num_planes ==2)
-                        { 
-                            buf_size+=frame->img.strides[1]*frame->img.height;
-                        }
-                        else{
-                            LOG_O("img fomrat is not match with frame planes:%d\n",frame->img.num_planes);
-                            return;
-                        }
-                        break;
-                default:
-                        break;
-                
-        }
-
-        buf[0]= mmap(0, buf_size, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, frame->img.dmabuf[0].fds, frame->img.dmabuf[0].offset);
-        // plane_size[1] = frame->img.strides[1]*frame->img.height;
-        // printf("frame plane 1 stride:%d,offset:%d\n", frame->img.strides[1],(uint32_t)frame->img.dmabuf[1].offset);
-        if(frame->img.num_planes ==2)
-        {
-            // buf[1] = mmap(0, plane_size[1]/2, PROT_READ | PROT_WRITE,
-            //             MAP_SHARED, frame->img.dmabuf[1].fds, frame->img.dmabuf[1].offset);
-            buf[1] = buf[0]+frame->img.dmabuf[1].offset;
-        }
-
-    }
-    else{
-            buf[0] = frame->img.usr_addr[0];
-            buf[1] = frame->img.usr_addr[1];
+    for(j =0;j<frame->frame_data.num_plane;j++)
+    {
+        buf[j] = frame->frame_data.vir_addr[j];
     }
 
-	LOG_O("%s,save img from : (%lx,%lx)size:%d to %s, fmt:%d width:%d stride:%d height:%d\n",__FUNCTION__, (uint64_t)buf[0],(uint64_t)buf[1],size, file, fmt, frame->img.width, frame->img.strides[0], frame->img.height);
+	LOG_I("save img from: addr:%p,to %s, fd:%d,fmt:%d width:%d stride:%d height:%d\n", buf[0], file, frame->frame_data.fd[0], 
+            frame->frame_info.pixel_format, frame->frame_info.width, frame->frame_data.stride[0], frame->frame_info.height);
 
-	if (frame->img.strides[0] == 0) {
-		frame->img.strides[0] = frame->img.width;
-	}
-	switch(fmt) {
+	switch(frame->frame_info.pixel_format) {
 		case CSI_PIX_FMT_NV12:
 		case CSI_PIX_FMT_YUV_SEMIPLANAR_420:
-			for (j = 0; j < frame->img.height; j++) { //Y
-				indexd = j*frame->img.strides[0];
-				write(fd, buf[0] + indexd, frame->img.width);
+			for (j = 0; j < frame->frame_info.height; j++) { //Y
+				indexd = j*frame->frame_data.stride[0];
+				write(fd, buf[0] + indexd, frame->frame_info.width);
 			}
-			for (j = 0; j < frame->img.height / 2; j++) { //UV
-				indexd = j*frame->img.strides[0];
-				write(fd, buf[1] + indexd, frame->img.width);
+			for (j = 0; j < frame->frame_info.height / 2; j++) { //UV
+				indexd = j*frame->frame_data.stride[0];
+				write(fd, buf[1] + indexd, frame->frame_info.width);
 			}
 			break;
 		case CSI_PIX_FMT_RGB_INTEVLEAVED_888:
 		case CSI_PIX_FMT_YUV_TEVLEAVED_444:
-            size = frame->img.width*3;
-            for (j = 0; j < frame->img.height; j++) {
-				indexd = j*frame->img.strides[0];
+			size = frame->frame_info.width*3;
+			for (j = 0; j < frame->frame_info.height; j++) {
+				indexd = j*frame->frame_data.stride[0];
 				write(fd, buf[0] + indexd, size);
 			}
 			break;
 		case CSI_PIX_FMT_BGR:
 		case CSI_PIX_FMT_RGB_PLANAR_888:
 		case CSI_PIX_FMT_YUV_PLANAR_444:
-			size = frame->img.width * frame->img.height * 3;
+			size = frame->frame_info.width * frame->frame_info.height * 3;
 			write(fd, buf[0], size);
 			break;
-        case CSI_PIX_FMT_RAW_8BIT:
-            size = frame->img.width;
-            for (j = 0; j < frame->img.height; j++) {
-				indexd = j*frame->img.strides[0];
+		case CSI_PIX_FMT_RAW_8BIT:
+			size = frame->frame_info.width;
+			for (j = 0; j < frame->frame_info.height; j++) {
+				indexd = j*frame->frame_data.stride[0];
 				write(fd, buf[0] + indexd, size);
 			}
 			break;
 		case CSI_PIX_FMT_YUV_TEVLEAVED_422:
-        case CSI_PIX_FMT_RAW_10BIT:
-	    case CSI_PIX_FMT_RAW_12BIT:
-	    case CSI_PIX_FMT_RAW_14BIT:
-	    case CSI_PIX_FMT_RAW_16BIT:
-            size = frame->img.width*2;
-            for (j = 0; j < frame->img.height; j++) {
-				indexd = j*frame->img.strides[0];
+		case CSI_PIX_FMT_RAW_10BIT:
+		case CSI_PIX_FMT_RAW_12BIT:
+		case CSI_PIX_FMT_RAW_14BIT:
+		case CSI_PIX_FMT_RAW_16BIT:
+			size = frame->frame_info.width*2;
+			for (j = 0; j < frame->frame_info.height; j++) {
+				indexd = j*frame->frame_data.stride[0];
 				write(fd, buf[0] + indexd, size);
 			}
 			break;
 		case CSI_PIX_FMT_YUV_SEMIPLANAR_422:
-			if (frame->img.strides[0] == 0) {
-				frame->img.strides[0] = frame->img.width;
+			if (frame->frame_data.stride[0] == 0) {
+				frame->frame_data.stride[0] = frame->frame_info.width;
 			}
-			for (j = 0; j < frame->img.height; j++) { //Y
-				indexd = j*frame->img.strides[0];
-				write(fd,buf[0] + indexd, frame->img.width);
+			for (j = 0; j < frame->frame_info.height; j++) { //Y
+				indexd = j*frame->frame_data.stride[0];
+				write(fd,buf[0] + indexd, frame->frame_info.width);
 			}
-			for (j = 0; j < frame->img.height; j++) { //UV
-				indexd = j*frame->img.strides[0];
-				write(fd, buf[1]+ indexd, frame->img.width);
+			for (j = 0; j < frame->frame_info.height; j++) { //UV
+				indexd = j*frame->frame_data.stride[0];
+				write(fd, buf[1]+ indexd, frame->frame_info.width);
 			}
 			break;
 		default:
-			LOG_E("%s unsupported format to save\n", __func__);
-			exit(-1);
+			LOG_E("%s unsupported format to save\n", __func__);			
 			break;
 	}
 
 	close(fd);
-    munmap(buf[0],buf_size);
-    // munmap(buf[1],plane_size[1]);
-	LOG_O("%s exit\n", __func__);
 }

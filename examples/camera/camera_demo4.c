@@ -17,7 +17,7 @@
 #define LOG_PREFIX "camera_demo4"
 #include <syslog.h>
 
-#include <csi_frame.h>
+#include <csi_frame_ex.h>
 #include <csi_camera.h>
 
 #define TEST_DEVICE_NAME "/dev/video0"
@@ -29,7 +29,7 @@ typedef struct cam_channel_control {
 	csi_camera_channel_cfg_s chn_cfg;
 } cam_channel_control_t;
 
-static void dump_camera_meta(csi_frame_s *frame);
+static void dump_camera_meta(csi_frame_ex_s *frame);
 static void *channel_thread(void *arg);
 
 int main(int argc, char *argv[])
@@ -225,7 +225,7 @@ static void *channel_thread(void *arg)
 
 	// 处理订阅的Event
 	LOG_O("[chn_%d] Starting get events...\n", chn_id);
-	csi_frame_s frame;
+	csi_frame_ex_s frame;
 	struct csi_camera_event event;
 
 	while (chn_ctrl->run) {
@@ -277,15 +277,15 @@ static void *channel_thread(void *arg)
 	pthread_exit(NULL);
 }
 
-static void dump_camera_meta(csi_frame_s *frame)
+static void dump_camera_meta(csi_frame_ex_s *frame)
 {
 	int i;
-	if (frame->meta.type != CSI_META_TYPE_CAMERA)
+	if (frame->frame_meta.type != CSI_META_TYPE_CAMERA)
 		return;
 
-	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->meta.data;
+	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->frame_meta.data;
 	int meta_count = meta_data->count;
-	csi_camrea_meta_unit_s meta_unit;
+	csi_camera_meta_unit_s meta_unit;
 
 	for (i = 0; i < meta_count; i++) {
 		csi_camera_frame_get_meta_unit(

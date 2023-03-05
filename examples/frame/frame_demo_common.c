@@ -164,7 +164,7 @@ int fdc_create_csi_frame(csi_frame_s *camera_frame,
 void fdc_dump_camera_meta(csi_camera_meta_s *camera_meta)
 {
 	int ret;
-	csi_camrea_meta_unit_s meta_unit;
+	csi_camera_meta_unit_s meta_unit;
 	ret = csi_camera_frame_get_meta_unit(&meta_unit, camera_meta, CSI_CAMERA_META_ID_TIMESTAMP);
 	if (ret == 0) {
 		struct timeval tv = meta_unit.time_value;

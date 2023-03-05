@@ -102,7 +102,7 @@ static int do_camera_event_action(cams_t *session, csi_camera_event_s *event)
 static int do_channel_event_action(cams_t *session, csi_camera_event_s *event)
 {
 	_CHECK_SESSION_RETURN();
-	csi_frame_s frame;
+	csi_frame_ex_s frame;
 	int ret = 0;
 
 	camera_event_action_union_t *event_action_u =
@@ -160,7 +160,7 @@ static int do_channel_event_action(cams_t *session, csi_camera_event_s *event)
 					LOG_D("read_frame_count = %d\n",read_frame_count);
 					for (int i = 0; i < read_frame_count; i++) {
 						csi_camera_get_frame(NULL,event->type - CSI_CAMERA_EVENT_TYPE_CHANNEL0, &frame, timeout);
-						if(frame.img.usr_addr[0] != NULL) {
+						if(frame.frame_data.vir_addr[0] != NULL) {
 							camera_action_image_save(&frame);
 							csi_camera_put_frame(&frame);
 						}
@@ -182,9 +182,9 @@ static int do_channel_event_action(cams_t *session, csi_camera_event_s *event)
 					LOG_D("read_frame_count = %d\n",read_frame_count);
 					//for (int i = 0; i < read_frame_count; i++) {
 						csi_camera_get_frame(NULL,event->type - CSI_CAMERA_EVENT_TYPE_CHANNEL0, &frame, timeout);
-						if(frame.img.usr_addr[0] != NULL) {
+						if(frame.frame_data.vir_addr[0] != NULL) {
 							camera_action_image_display(&frame);
-							LOG_D("frame->usr_addr = %p\n",frame.img.usr_addr[0]);
+							LOG_D("frame->usr_addr = %p\n",frame.frame_data.vir_addr[0]);
 							csi_camera_put_frame(&frame);
 						}
 					//}

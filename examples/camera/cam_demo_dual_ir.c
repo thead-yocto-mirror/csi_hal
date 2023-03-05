@@ -17,7 +17,7 @@
 #define LOG_PREFIX "cam_demo_dual_ir"
 #include <syslog.h>
 
-#include <csi_frame.h>
+#include <csi_frame_ex.h>
 #include <csi_camera.h>
 #include <csi_camera_dev_api.h>
 #include "list.h"
@@ -72,7 +72,7 @@ typedef struct{
 typedef struct camera_sync_msg{
     cam_sync_message_type_e  type;
     union{
-        csi_frame_s  frame;
+        csi_frame_ex_s  frame;
         cam_ai_info_t ai_info;
         cam_dsp_info_t  dsp_info;
     };
@@ -193,7 +193,7 @@ typedef struct dual_dsp_handle{
 int file_id = 0;
 extern void *vi_plink_create(csi_camera_channel_cfg_s *chn_cfg);
 extern void vi_plink_release(void * plink);
-extern void display_camera_frame(void * plink, csi_frame_s *frame);
+extern void display_camera_frame(void * plink, csi_frame_ex_s *frame);
 
 static void *cam_frame_sync_process(void *ctx);
 static void* dsp_dual_ir_porcess(void *arg);
@@ -920,7 +920,7 @@ static void cam_sync_destroy(void *arg)
     free(ctx);
     LOG_O("cam sync destroy\n");
 }
-static int push_new_frame(struct list_head *frame_list, csi_frame_s * new_frame)
+static int push_new_frame(struct list_head *frame_list, csi_frame_ex_s * new_frame)
 {
     int entry_num =0;
     frame_item_t *frame_item = NULL;
@@ -936,8 +936,8 @@ static int push_new_frame(struct list_head *frame_list, csi_frame_s * new_frame)
     if((entry_num+1)>MAX_FIFO_FRAME_NUM)
     {
         frame_item = list_first_entry(frame_list,frame_item_t,head);
-        LOG_D("release frame fd:%d\n",((csi_frame_s *)frame_item->item)->img.fds[0]);
-        csi_camera_put_frame((csi_frame_s *)frame_item->item);
+        LOG_D("release frame fd:%d\n",((csi_frame_ex_s *)frame_item->item)->frame_data.fd[0]);
+        csi_camera_put_frame((csi_frame_ex_s *)frame_item->item);
         free(frame_item->item);
         list_del(&frame_item->head);
         free(frame_item);
@@ -948,9 +948,9 @@ static int push_new_frame(struct list_head *frame_list, csi_frame_s * new_frame)
     return 0;
 }
 
-static csi_frame_s * pop_matched_frame_with_fd(struct list_head *frame_list,int fd)
+static csi_frame_ex_s * pop_matched_frame_with_fd(struct list_head *frame_list,int fd)
 {
-    csi_frame_s *  frame = NULL;
+    csi_frame_ex_s *  frame = NULL;
     frame_item_t *frame_item = NULL;
     frame_item_t * temp;
     if(frame_list==NULL)
@@ -958,12 +958,12 @@ static csi_frame_s * pop_matched_frame_with_fd(struct list_head *frame_list,int 
         return NULL;
     }
     list_for_each_entry_safe(frame_item,temp,frame_list,head){
-        frame = (csi_frame_s *)frame_item->item;
-        if(frame->img.fds[0]==fd)
+        frame = (csi_frame_ex_s *)frame_item->item;
+        if(frame->frame_data.fd[0]==fd)
         {
             list_del(&frame_item->head);
             free(frame_item);
-            LOG_D("get frame fd:%d\n",frame->img.fds[0]);
+            LOG_D("get frame fd:%d\n",frame->frame_data.fd[0]);
             return frame;
         }
     }
@@ -971,11 +971,11 @@ static csi_frame_s * pop_matched_frame_with_fd(struct list_head *frame_list,int 
 }
 
 
-static csi_frame_s * pop_matched_frame_with_ts(struct list_head *frame_list, csi_frame_s * target_frame,uint32_t rang_us,bool clear_early)
+static csi_frame_ex_s * pop_matched_frame_with_ts(struct list_head *frame_list, csi_frame_ex_s * target_frame,uint32_t rang_us,bool clear_early)
 {
-    csi_camera_meta_s *meta_data = (csi_camera_meta_s *)target_frame->meta.data;
-	csi_camrea_meta_unit_s target_ts,loop_ts;
-     csi_frame_s *  frame;
+    csi_camera_meta_s *meta_data = (csi_camera_meta_s *)target_frame->frame_meta.data;
+	csi_camera_meta_unit_s target_ts,loop_ts;
+     csi_frame_ex_s *  frame;
     frame_item_t *frame_item = NULL;
     frame_item_t * tmp;
     struct timeval  time_value;
@@ -994,8 +994,8 @@ static csi_frame_s * pop_matched_frame_with_ts(struct list_head *frame_list, csi
     target_us = target_ts.time_value.tv_sec*1000000 + target_ts.time_value.tv_usec;
 
     list_for_each_entry_safe(frame_item,tmp,frame_list,head){
-            frame = ( csi_frame_s *)frame_item->item;
-            meta_data = (csi_camera_meta_s *)frame->meta.data;
+            frame = ( csi_frame_ex_s *)frame_item->item;
+            meta_data = (csi_camera_meta_s *)frame->frame_meta.data;
             csi_camera_frame_get_meta_unit(
 	    	&loop_ts, meta_data, CSI_CAMERA_META_ID_TIMESTAMP);
             loop_us =  loop_ts.time_value.tv_sec*1000000 + loop_ts.time_value.tv_usec;
@@ -1018,20 +1018,20 @@ static csi_frame_s * pop_matched_frame_with_ts(struct list_head *frame_list, csi
 
 }
 
-static int send_paired_frame_to_dsp(msg_queue_ctx_t *queue,csi_frame_s *master_frame,csi_frame_s *slave_frame,struct list_head *send_frames)
+static int send_paired_frame_to_dsp(msg_queue_ctx_t *queue,csi_frame_ex_s *master_frame,csi_frame_ex_s *slave_frame,struct list_head *send_frames)
 {
     dsp_dual_ir_frame_msg_t *dsp_msg_payload;
     msg_queue_item_t *dsp_msg;
     frame_item_t *main_item,*slave_item;
     csi_camera_meta_s *meta_data;
-	csi_camrea_meta_unit_s timestap;
+	csi_camera_meta_unit_s timestap;
     if(queue==NULL || master_frame==NULL || slave_frame==NULL)
     {
         return -1;
     }
     
-    if(master_frame->img.width!=slave_frame->img.width||
-        master_frame->img.height!=slave_frame->img.height)       
+    if(master_frame->frame_info.width!=slave_frame->frame_info.width||
+        master_frame->frame_info.height!=slave_frame->frame_info.height)       
         {
             LOG_E("paird frame not the same picture param\n");
             return -1;
@@ -1046,20 +1046,20 @@ static int send_paired_frame_to_dsp(msg_queue_ctx_t *queue,csi_frame_s *master_f
         free(dsp_msg);
         return -1;
     }
-    meta_data = (csi_camera_meta_s *)master_frame->meta.data;
+    meta_data = (csi_camera_meta_s *)master_frame->frame_meta.data;
     csi_camera_frame_get_meta_unit(
 		&timestap, meta_data, CSI_CAMERA_META_ID_TIMESTAMP);
 
     dsp_msg->payload = dsp_msg_payload;
 
-    dsp_msg_payload->size = master_frame->img.height*master_frame->img.strides[0];
-    dsp_msg_payload->width = master_frame->img.width;
-    dsp_msg_payload->height = master_frame->img.height;
-    dsp_msg_payload->pix_format = master_frame->img.pix_format;
-    dsp_msg_payload->master_stride = master_frame->img.strides[0];
-    dsp_msg_payload->master_fd =  master_frame->img.fds[0];
-    dsp_msg_payload->slave_fd =  slave_frame->img.fds[0];
-    dsp_msg_payload->slave_stride = slave_frame->img.strides[0];
+    dsp_msg_payload->size = master_frame->frame_info.height*master_frame->frame_data.stride[0];
+    dsp_msg_payload->width = master_frame->frame_info.width;
+    dsp_msg_payload->height = master_frame->frame_info.height;
+    dsp_msg_payload->pix_format = master_frame->frame_info.pixel_format;
+    dsp_msg_payload->master_stride = master_frame->frame_data.stride[0];
+    dsp_msg_payload->master_fd =  master_frame->frame_data.fd[0];
+    dsp_msg_payload->slave_fd =  slave_frame->frame_data.fd[0];
+    dsp_msg_payload->slave_stride = slave_frame->frame_data.stride[0];
     dsp_msg_payload->timestap = timestap.time_value.tv_sec*1000000+timestap.time_value.tv_usec;
     enqueue_msg(queue,dsp_msg);
     main_item = malloc(sizeof(frame_item_t));
@@ -1072,12 +1072,12 @@ static int send_paired_frame_to_dsp(msg_queue_ctx_t *queue,csi_frame_s *master_f
     return 0;
 }
 
-static int cam_dual_frame_process(struct list_head * pair_frame_list,struct list_head * free_frame_list, struct list_head *busy_frame_list,csi_frame_s *frame, msg_queue_ctx_t *dsp_prcoess_queue,cam_sync_message_type_e type)
+static int cam_dual_frame_process(struct list_head * pair_frame_list,struct list_head * free_frame_list, struct list_head *busy_frame_list,csi_frame_ex_s *frame, msg_queue_ctx_t *dsp_prcoess_queue,cam_sync_message_type_e type)
 {
-    csi_frame_s *new_frame = NULL;
-    csi_frame_s *pair_frame = NULL;
-    csi_frame_s *master_frame = NULL;
-    csi_frame_s *slave_frame = NULL;
+    csi_frame_ex_s *new_frame = NULL;
+    csi_frame_ex_s *pair_frame = NULL;
+    csi_frame_ex_s *master_frame = NULL;
+    csi_frame_ex_s *slave_frame = NULL;
 
     if(pair_frame_list == NULL ||free_frame_list==NULL ||busy_frame_list ==NULL || 
         frame == NULL || dsp_prcoess_queue == NULL || type >CAM_SYNC_MSG_SLAVE_FRAME)
@@ -1086,14 +1086,14 @@ static int cam_dual_frame_process(struct list_head * pair_frame_list,struct list
             return -1;
         }
 
-    new_frame = malloc(sizeof(csi_frame_s));
+    new_frame = malloc(sizeof(csi_frame_ex_s));
     if(new_frame==NULL)
     {
         LOG_E("malloc fail\n");
         csi_camera_put_frame(frame);
         return -1;
     }
-    memcpy(new_frame,frame,sizeof(csi_frame_s));
+    memcpy(new_frame,frame,sizeof(csi_frame_ex_s));
     pair_frame = pop_matched_frame_with_ts(pair_frame_list,frame,0,true);
     if(pair_frame == NULL)
     {
@@ -1117,7 +1117,7 @@ static int cam_dual_frame_process(struct list_head * pair_frame_list,struct list
         }
         if(send_paired_frame_to_dsp(dsp_prcoess_queue,master_frame,slave_frame,busy_frame_list))
         {
-            LOG_E("fail to send paired frame fd (%d,%d) to dsp\n",new_frame->img.fds[0],pair_frame->img.fds[0]);
+            LOG_E("fail to send paired frame fd (%d,%d) to dsp\n",new_frame->frame_data.fd[0],pair_frame->frame_data.fd[0]);
             csi_camera_put_frame(master_frame);
             free(master_frame);
             csi_camera_put_frame(slave_frame);
@@ -1131,8 +1131,8 @@ static int cam_dual_frame_process(struct list_head * pair_frame_list,struct list
 static void *cam_frame_sync_process(void *arg)
 {
     camera_sync_msg_t  *msg;
-    csi_frame_s * master_frame=NULL;
-    csi_frame_s * slave_frame=NULL;
+    csi_frame_ex_s * master_frame=NULL;
+    csi_frame_ex_s * slave_frame=NULL;
     struct list_head *matched_list=NULL;
     msg_queue_item_t * item;
     cam_sync_process_ctx_t *ctx =(cam_sync_process_ctx_t *)arg;
@@ -1214,7 +1214,7 @@ static int camera_get_chl_id(int env_type, int *chl_id)
 	}
 	return 0;
 }
-static int cam_send_frame_to_sync_process(msg_queue_ctx_t *queue,csi_frame_s *frame, cam_sync_message_type_e  type)
+static int cam_send_frame_to_sync_process(msg_queue_ctx_t *queue,csi_frame_ex_s *frame, cam_sync_message_type_e  type)
 {
     camera_sync_msg_t *msg_palyload = malloc(sizeof(camera_sync_msg_t));
     msg_queue_item_t * item=NULL;
@@ -1229,7 +1229,7 @@ static int cam_send_frame_to_sync_process(msg_queue_ctx_t *queue,csi_frame_s *fr
         return -1;
     }
     msg_palyload->type= type;
-    memcpy(&msg_palyload->frame,frame,sizeof(csi_frame_s));
+    memcpy(&msg_palyload->frame,frame,sizeof(csi_frame_ex_s));
     item->payload = msg_palyload;
     return enqueue_msg(queue,item);
 
@@ -1248,7 +1248,7 @@ static int camera_event_process(void *arg)
     type = ctx->cam_id==0?CAM_SYNC_MSG_MAIN_FRAME:CAM_SYNC_MSG_SLAVE_FRAME;
 	struct timeval cur_time;
 	struct csi_camera_event event;
-	csi_frame_s frame;
+	csi_frame_ex_s frame;
 
 	if (ev_handle == NULL) {
 		LOG_E("fail to get ev_handle ev_handle\n");
@@ -1579,22 +1579,6 @@ ONR_ERR:
     exit(0);
 }
 
-static void dump_camera_meta(csi_frame_s *frame)
-{
-	int i;
-	//printf("%s\n", __func__);
-	if (frame->meta.type != CSI_META_TYPE_CAMERA)
-		return;
 
-	csi_camera_meta_s *meta_data = (csi_camera_meta_s *)frame->meta.data;
-	int meta_count = meta_data->count;
-	csi_camrea_meta_unit_s meta_unit;
-
-
-	csi_camera_frame_get_meta_unit(
-		&meta_unit, meta_data, CSI_CAMERA_META_ID_FRAME_ID);
-	LOG_I("meta_id=%d, meta_type=%d, meta_value=%d\n",
-			meta_unit.id, meta_unit.type, meta_unit.int_value);
-}
 
 

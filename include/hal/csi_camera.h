@@ -41,7 +41,7 @@ extern "C" {
  */
 
 #define CSI_CAMERA_VERSION_MAJOR	0
-#define CSI_CAMERA_VERSION_MINOR	2
+#define CSI_CAMERA_VERSION_MINOR	3
 
 #define CSI_CAMERA_NAME_MAX_LEN 32
 typedef void *csi_cam_handle_t;
@@ -110,6 +110,7 @@ typedef enum csi_camera_property_type {
 	CSI_CAMERA_PROPERTY_TYPE_ENUM		= 3,
 	CSI_CAMERA_PROPERTY_TYPE_STRING		= 7,
 	CSI_CAMERA_PROPERTY_TYPE_BITMASK	= 8,
+	CSI_CAMERA_PROPERTY_TYPE_FLOAT      = 9,
 } csi_camera_property_type_e;
 
 typedef union csi_camera_property_data {
@@ -118,6 +119,7 @@ typedef union csi_camera_property_data {
 	int      enum_value;
 	uint32_t bitmask_value;
 	char     str_value[32];
+    float    float_value;
 } csi_camera_property_data_u;
 
 typedef struct csi_camera_property_description {
@@ -177,6 +179,7 @@ typedef struct csi_camera_channel_cfg {
 	csi_img_type_e			img_type;
 	unsigned int			meta_fields;	/* bitmask of: csi_camera_meta_id_e */
 	csi_camera_channel_status_e	status;
+    csi_frame_alloctor_s   alloctor; /***external frame buffer allocater***/
 } csi_camera_channel_cfg_s;
 
 typedef enum csi_camera_event_type {
@@ -227,7 +230,7 @@ typedef struct csi_camera_event {
 typedef enum csi_camera_error{
     CSI_CAMERA_RET_ERR_INVALID_DEV = -1001,/* device is not valid */
     CSI_CAMERA_RET_ERR_INVALID_PARA, /* input params is not valid */
-    CSI_CAMERA_RET_ERR_NULL_PTR, 
+    CSI_CAMERA_RET_ERR_NULL_PTR,
     CSI_CAMERA_RET_ERR_DEV_BUSY,  /* device is budy */
     CSI_CAMERA_RET_ERR_NOMEM,   /* malloc fail */
     CSI_CAMERA_RET_ERR_TIMEOUT, /* evet or frame wait timeout */
@@ -274,9 +277,9 @@ int csi_camera_get_frame_count(csi_cam_handle_t cam_handle,
 			       csi_camera_channel_id_e chn_id);
 int csi_camera_get_frame(csi_cam_handle_t cam_handle,
 			 csi_camera_channel_id_e chn_id,
-			 csi_frame_s *frame, int timeout);
+			 csi_frame_ex_s *frame, int timeout);
 
-int csi_camera_put_frame(csi_frame_s *frame);
+int csi_camera_put_frame(csi_frame_ex_s *frame);
 
 
 int csi_camera_dequeue_frame(csi_cam_handle_t cam_handle,

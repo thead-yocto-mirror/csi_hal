@@ -23,8 +23,8 @@ int csi_camera_frame_alloc_meta(csi_camera_meta_s **meta, int meta_count, size_t
 		return -1;
 	}
 
-	malloc_size = sizeof(csi_camera_meta_s) + sizeof(csi_camrea_meta_unit_s) * meta_count;
-	LOG_D("malloc_size=(%zd+%zd)=%zd\n", sizeof(csi_camera_meta_s), sizeof(csi_camrea_meta_unit_s) * meta_count, malloc_size);
+	malloc_size = sizeof(csi_camera_meta_s) + sizeof(csi_camera_meta_unit_s) * meta_count;
+	LOG_D("malloc_size=(%zd+%zd)=%zd\n", sizeof(csi_camera_meta_s), sizeof(csi_camera_meta_unit_s) * meta_count, malloc_size);
 
 	*meta = malloc(malloc_size);
 	if (*meta == NULL) {
@@ -34,8 +34,8 @@ int csi_camera_frame_alloc_meta(csi_camera_meta_s **meta, int meta_count, size_t
 
 	memset(*meta, 0, malloc_size);
 	(*meta)->count = meta_count;
-	(*meta)->size = sizeof(csi_camrea_meta_unit_s) * meta_count;
-	(*meta)->units = (csi_camrea_meta_unit_s *)((char*)(*meta) + sizeof(csi_camera_meta_s));
+	(*meta)->size = sizeof(csi_camera_meta_unit_s) * meta_count;
+	(*meta)->units = (csi_camera_meta_unit_s *)((char*)(*meta) + sizeof(csi_camera_meta_s));
 
 	LOG_D("*meta=%p, (*meta)->units=%p\n", *meta, (*meta)->units);
 
@@ -55,7 +55,7 @@ int csi_camera_frame_free_meta(csi_camera_meta_s *meta)
 	return 0;
 }
 
-int csi_camera_frame_get_meta_unit(csi_camrea_meta_unit_s *meta_unit,
+int csi_camera_frame_get_meta_unit(csi_camera_meta_unit_s *meta_unit,
 				   csi_camera_meta_s      *meta_data,
 				   csi_camera_meta_id_e    meta_field)
 {

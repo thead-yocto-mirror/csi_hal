@@ -132,7 +132,7 @@ int consumer_process(int socket_fd)
 	csi_dump_img_info(&camera_frame.img);
 
 	csi_camera_meta_s *camera_meta_data = (csi_camera_meta_s *)camera_frame.meta.data;
-	camera_meta_data->units = (csi_camrea_meta_unit_s *)((char *)camera_meta_data + sizeof(csi_camera_meta_s));
+	camera_meta_data->units = (csi_camera_meta_unit_s *)((char *)camera_meta_data + sizeof(csi_camera_meta_s));
 	fdc_dump_camera_meta(camera_meta_data);
 
 	LOG_D("csi frame meta = {type=%d, size=%zd, data=%p}\n",
